@@ -342,3 +342,15 @@
   - After successful upload, tombstones older than 7 days are pruned
 - **Same fix applied to vocabulary**: deleting a word in the vocabulary page also creates a tombstone
 - **Why localStorage and not IndexedDB**: Tombstones are transient sync metadata, not domain data. localStorage is simpler and survives the `hlStore.clear()` in `applyMergedData`
+
+#### Batch 23: Cross-device deletion sync via tombstones (2026-02-15)
+- **Bug**: Deleting a highlight or vocabulary word works on one device but gets synced back from another device
+- **Root cause**: `mergeData()` does a union of local + remote highlights/vocabulary. If Device A deletes an item, Device B still has it → next sync from B re-uploads → A gets it back.
+- **Fix — synced tombstones**:
+  - When a highlight or word is deleted, a tombstone record `{ bookId, text, deletedAt }` (or `{ word, deletedAt }`) is created
+  - Tombstones are stored in localStorage AND included in the exported sync data (`deletedHighlights`, `deletedVocab` fields)
+  - During merge: tombstones from BOTH remote and local are unioned first → then highlights/vocabulary are filtered against the merged tombstones
+  - After merge: merged tombstones are persisted to localStorage so the current device learns about remote deletes too
+  - Tombstones auto-expire after 30 days (sufficient for multi-device propagation)
+- **Affected files**: sync.js (merge logic + export), reader.html (highlight delete), flashcards.html (word delete), db.js (deleteWord function)
+- **Key principle**: In a distributed sync system, "delete" is itself a piece of data that must be replicated — not just the absence of data
