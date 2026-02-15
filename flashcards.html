@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>背单词</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .header a {
+      color: var(--text);
+      text-decoration: none;
+      font-size: 20px;
+    }
+
+    .header h1 {
+      flex: 1;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .progress-info {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.1s;
+    }
+
+    .card:active {
+      transform: scale(0.98);
+    }
+
+    .word {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 20px;
+    }
+
+    .translation {
+      font-size: 24px;
+      color: var(--text);
+      display: none;
+    }
+
+    .card.revealed .translation {
+      display: block;
+    }
+
+    .hint {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 20px;
+    }
+
+    .card.revealed .hint {
+      display: none;
+    }
+
+    .buttons {
+      display: none;
+      gap: 16px;
+      margin-top: 30px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .buttons.show {
+      display: flex;
+    }
+
+    .buttons button {
+      flex: 1;
+      padding: 16px 24px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+
+    .buttons button:active {
+      transform: scale(0.95);
+    }
+
+    .btn-forgot {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-hard {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .btn-good {
+      background: var(--success);
+      color: white;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      font-size: 16px;
+      margin-bottom: 24px;
+    }
+
+    .empty-state a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .stats {
+      margin-top: 40px;
+      padding: 20px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      text-align: left;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .stats h3 {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="index.html">←</a>
+    <h1>背单词</h1>
+    <span class="progress-info" id="progress-info"></span>
+    <button class="theme-toggle" id="theme-toggle" title="切换主题">🌙</button>
+  </div>
+
+  <div class="container" id="container">
+    <!-- Content injected by JS -->
+  </div>
+
+  <script type="module">
+    import { getWordsForReview, updateWordReview, getAllVocabulary } from './db.js'
+    import { toggleTheme, getTheme } from './theme.js'
+    import { isDropboxConfigured, isLoggedIn } from './dropbox.js'
+    import { pushToDropbox } from './sync.js'
+    
+    // Debounced sync
+    let syncTimeout = null
+    function debouncedSync() {
+      if (!isDropboxConfigured() || !isLoggedIn()) return
+      if (syncTimeout) clearTimeout(syncTimeout)
+      syncTimeout = setTimeout(() => {
+        pushToDropbox().catch(e => console.error('Auto sync failed:', e))
+      }, 3000)
+    }
+
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-toggle')
+    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
+    themeBtn.addEventListener('click', () => {
+      const newTheme = toggleTheme()
+      themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙'
+    })
+
+    const container = document.getElementById('container')
+    const progressInfo = document.getElementById('progress-info')
+
+    let cards = []
+    let currentIndex = 0
+
+    async function init() {
+      cards = await getWordsForReview(50)
+      
+      if (cards.length === 0) {
+        showEmptyState()
+      } else {
+        showCard()
+      }
+    }
+
+    async function showEmptyState() {
+      const allWords = await getAllVocabulary()
+      const total = allWords.length
+      const withTranslation = allWords.filter(w => w.translation).length
+      
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2>🎉 今天复习完成！</h2>
+          <p>没有需要复习的单词了</p>
+          <a href="index.html">返回书架继续阅读</a>
+          
+          <div class="stats">
+            <h3>单词统计</h3>
+            <div class="stat-row">
+              <span>总单词数</span>
+              <span>${total}</span>
+            </div>
+            <div class="stat-row">
+              <span>有翻译</span>
+              <span>${withTranslation}</span>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    function showCard() {
+      if (currentIndex >= cards.length) {
+        showEmptyState()
+        return
+      }
+
+      const card = cards[currentIndex]
+      progressInfo.textContent = `${currentIndex + 1} / ${cards.length}`
+
+      container.innerHTML = `
+        <div class="card" id="card">
+          <div class="word">${card.word}</div>
+          <div class="translation">${card.translation || '(无翻译)'}</div>
+          <div class="hint">点击显示答案</div>
+        </div>
+        <div class="buttons" id="buttons">
+          <button class="btn-forgot" data-quality="1">忘了</button>
+          <button class="btn-hard" data-quality="3">想起来了</button>
+          <button class="btn-good" data-quality="5">秒答</button>
+        </div>
+      `
+
+      const cardEl = document.getElementById('card')
+      const buttonsEl = document.getElementById('buttons')
+
+      cardEl.addEventListener('click', () => {
+        cardEl.classList.add('revealed')
+        buttonsEl.classList.add('show')
+      })
+
+      buttonsEl.addEventListener('click', async (e) => {
+        if (e.target.tagName !== 'BUTTON') return
+        const quality = parseInt(e.target.dataset.quality)
+        await updateWordReview(card.word, quality)
+        debouncedSync()
+        currentIndex++
+        showCard()
+      })
+    }
+
+    init()
+  </script>
+</body>
+</html>

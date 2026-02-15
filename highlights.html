@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>我的划线</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header a {
+      color: var(--text);
+      text-decoration: none;
+      font-size: 20px;
+    }
+
+    .header h1 {
+      flex: 1;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .header button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .highlight-item {
+      background: var(--bg-card);
+      border-left: 4px solid var(--highlight-border);
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .highlight-text {
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--text);
+    }
+
+    .highlight-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .highlight-book {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .highlight-date {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .highlight-delete {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 18px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .highlight-item:hover .highlight-delete {
+      opacity: 1;
+    }
+
+    .highlight-delete:hover {
+      color: #ef4444;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h2 {
+      font-size: 20px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      font-size: 15px;
+    }
+
+    .empty-state a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .book-group {
+      margin-bottom: 32px;
+    }
+
+    .book-group-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="index.html">←</a>
+    <h1>我的划线</h1>
+    <button id="btn-export">导出</button>
+    <button class="theme-toggle" id="theme-toggle" title="切换主题">🌙</button>
+  </div>
+
+  <div class="container" id="container">
+    <!-- Content injected by JS -->
+  </div>
+
+  <script type="module">
+    import { getAllHighlights, deleteHighlight } from './db.js'
+    import { toggleTheme, getTheme } from './theme.js'
+
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-toggle')
+    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
+    themeBtn.addEventListener('click', () => {
+      const newTheme = toggleTheme()
+      themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙'
+    })
+
+    const container = document.getElementById('container')
+
+    async function render() {
+      const highlights = await getAllHighlights()
+      
+      if (!highlights || highlights.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <h2>还没有划线</h2>
+            <p>阅读时选中句子即可自动划线</p>
+            <p style="margin-top: 16px"><a href="index.html">返回书架</a></p>
+          </div>
+        `
+        return
+      }
+
+      // Group by book
+      const byBook = {}
+      for (const hl of highlights) {
+        const book = hl.bookTitle || 'Unknown'
+        if (!byBook[book]) byBook[book] = []
+        byBook[book].push(hl)
+      }
+
+      // Sort each group by date (newest first)
+      for (const book of Object.keys(byBook)) {
+        byBook[book].sort((a, b) => b.addedAt - a.addedAt)
+      }
+
+      // Render
+      let html = ''
+      for (const [book, hls] of Object.entries(byBook)) {
+        html += `<div class="book-group">`
+        html += `<div class="book-group-title">${escHtml(book)}</div>`
+        for (const hl of hls) {
+          const date = new Date(hl.addedAt).toLocaleDateString('zh-CN')
+          html += `
+            <div class="highlight-item" data-id="${hl.id}">
+              <div class="highlight-text">${escHtml(hl.text)}</div>
+              <div class="highlight-meta">
+                <span class="highlight-date">${date}</span>
+              </div>
+              <button class="highlight-delete" title="删除">×</button>
+            </div>
+          `
+        }
+        html += `</div>`
+      }
+
+      container.innerHTML = html
+
+      // Delete handlers
+      container.querySelectorAll('.highlight-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const item = btn.closest('.highlight-item')
+          const id = parseInt(item.dataset.id)
+          if (confirm('删除这条划线？')) {
+            await deleteHighlight(id)
+            render()
+          }
+        })
+      })
+    }
+
+    function escHtml(s) {
+      const d = document.createElement('div')
+      d.textContent = s
+      return d.innerHTML
+    }
+
+    // Export
+    document.getElementById('btn-export').addEventListener('click', async () => {
+      const highlights = await getAllHighlights()
+      if (!highlights || highlights.length === 0) {
+        alert('没有划线可导出')
+        return
+      }
+
+      highlights.sort((a, b) => b.addedAt - a.addedAt)
+
+      const byBook = {}
+      for (const hl of highlights) {
+        const book = hl.bookTitle || 'Unknown'
+        if (!byBook[book]) byBook[book] = []
+        byBook[book].push(hl)
+      }
+
+      const date = new Date().toISOString().split('T')[0]
+      let md = `# Highlights\n\nExported: ${date}\n\n`
+      for (const [book, hls] of Object.entries(byBook)) {
+        md += `## ${book}\n\n`
+        for (const hl of hls) {
+          md += `> ${hl.text}\n\n`
+        }
+      }
+
+      const blob = new Blob([md], { type: 'text/markdown' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `highlights-${date}.md`
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+
+    render()
+  </script>
+</body>
+</html>

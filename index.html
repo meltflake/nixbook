@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Luca's EPUB Reader</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header {
+      background: var(--bg-bar); border-bottom: 1px solid var(--border);
+      padding: 12px 20px; display: flex; align-items: center; gap: 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-left h1 { font-size: 18px; font-weight: 600; white-space: nowrap; }
+    
+    .cloud-sync {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg-card); border-radius: 6px; padding: 4px 8px;
+      font-size: 13px; color: var(--text-secondary);
+    }
+    .cloud-sync.syncing { opacity: 0.6; }
+    .cloud-icon { font-size: 16px; cursor: pointer; }
+    .cloud-icon:hover { opacity: 0.8; }
+    .cloud-icon.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .sync-time { font-size: 11px; color: var(--text-muted); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .logout-btn {
+      background: none; border: none; cursor: pointer; font-size: 12px;
+      color: var(--text-muted); padding: 2px 4px;
+    }
+    .logout-btn:hover { color: var(--accent); }
+    
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .header-tool {
+      display: flex; align-items: center; gap: 4px; text-decoration: none;
+      color: var(--text-secondary); font-size: 13px; padding: 4px 8px;
+      border-radius: 6px; transition: background 0.2s;
+    }
+    .header-tool:hover { background: var(--hover); color: var(--text); }
+    .header-tool .icon { font-size: 16px; }
+    .header-tool .count { font-size: 12px; opacity: 0.8; }
+    
+    .theme-toggle {
+      background: none; border: none; cursor: pointer; font-size: 18px;
+      padding: 4px; border-radius: 4px;
+    }
+    .theme-toggle:hover { background: var(--hover); }
+
+    .book-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px; padding: 20px;
+    }
+    
+    .add-book-card {
+      background: var(--bg-card); border-radius: 8px; cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s; border: 2px dashed var(--border);
+      overflow: hidden;
+    }
+    .add-book-card:hover { transform: translateY(-3px); border-color: var(--accent); background: var(--hover); }
+    .add-book-card.dragover { border-color: var(--accent); background: var(--hover); }
+    .add-book-cover {
+      width: 100%; aspect-ratio: 2/3; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: var(--bg);
+    }
+    .add-book-cover .plus { font-size: 48px; color: var(--text-muted); line-height: 1; }
+    .add-book-cover .label { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+    .add-book-info { padding: 8px 10px; }
+    .add-book-info .hint { font-size: 11px; color: var(--text-muted); }
+    
+    .book-card {
+      background: var(--bg-card); border-radius: 8px; overflow: hidden; cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s; position: relative;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .book-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+    .book-cover {
+      width: 100%; aspect-ratio: 2/3; display: flex; align-items: center;
+      justify-content: center; font-size: 28px; color: #fff; font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .book-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .book-info { padding: 8px 10px; }
+    .book-title {
+      font-size: 12px; font-weight: 600; line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .book-author { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
+    .book-progress { font-size: 10px; color: var(--accent); margin-top: 2px; }
+    .book-translate-info { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .book-delete {
+      position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(0,0,0,0.5); color: #fff; border: none; cursor: pointer;
+      font-size: 14px; display: none; align-items: center; justify-content: center; line-height: 1;
+    }
+    .book-card:hover .book-delete { display: flex; }
+
+    .book-translate-badge {
+      position: absolute; bottom: 50px; left: 0; right: 0;
+      background: rgba(0,0,0,0.7); color: #fff; font-size: 10px;
+      padding: 3px 6px; text-align: center;
+    }
+    .book-translate-badge.done { background: rgba(34, 197, 94, 0.8); }
+    .book-translate-badge.error { background: rgba(239, 68, 68, 0.8); }
+    .book-translate-badge.clickable { background: rgba(59, 130, 246, 0.8); cursor: pointer; }
+    .book-translate-badge.clickable:hover { background: rgba(59, 130, 246, 1); }
+
+    .empty-hint { 
+      grid-column: 1 / -1; text-align: center; padding: 40px; 
+      color: var(--text-muted); font-size: 14px; 
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>Luca's EPUB Reader</h1>
+      <div class="cloud-sync" id="cloud-sync">
+        <span class="cloud-icon" id="cloud-icon" title="点击同步">☁️</span>
+        <span class="sync-time" id="sync-time"></span>
+        <button class="logout-btn" id="logout-btn" style="display:none" title="退出登录">✕</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <a href="flashcards.html" class="header-tool" title="背单词">
+        <span class="icon">🎯</span>
+        <span class="count" id="vocab-count">0</span>
+      </a>
+      <a href="highlights.html" class="header-tool" title="我的划线">
+        <span class="icon">📝</span>
+        <span class="count" id="highlight-count">0</span>
+      </a>
+      <button class="theme-toggle" id="theme-toggle" title="切换主题">🌙</button>
+    </div>
+  </header>
+
+  <div class="book-grid" id="book-grid">
+    <div class="add-book-card" id="add-book-card">
+      <div class="add-book-cover">
+        <span class="plus">+</span>
+        <span class="label">添加书籍</span>
+      </div>
+      <div class="add-book-info">
+        <div class="hint">支持 .epub 格式</div>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="file-input" accept=".epub" hidden>
+
+  <script type="module">
+    import { saveBook, getAllBooks, deleteBook, getAllVocabulary, getAllHighlights, getBookTranslations, importTranslations } from './db.js'
+    import { toggleTheme, getTheme } from './theme.js'
+    import { isDropboxConfigured, isLoggedIn, startAuth, handleAuthCallback, clearAccessToken, getSyncStatus } from './dropbox.js'
+    import { syncWithDropbox, pushToDropbox, syncBookTranslations } from './sync.js'
+
+    // ========== 翻译相关 ==========
+    const translationStates = new Map()
+    const TRANSLATE_API = 'https://nixbook.wulujia.workers.dev'
+    const ANTHROPIC_MODEL = 'claude-sonnet-4-5-20250929'
+    const FOLIATE_CDN = 'https://cdn.jsdelivr.net/gh/johnfactotum/foliate-js@main/'
+    const TRANSLATION_QUEUE_KEY = 'translation-queue'
+    let activeTranslations = new Set()
+    
+    // ========== 翻译队列持久化 ==========
+    function loadTranslationQueue() {
+      try { return JSON.parse(localStorage.getItem(TRANSLATION_QUEUE_KEY) || '{}') }
+      catch { return {} }
+    }
+    function saveTranslationQueue(queue) { localStorage.setItem(TRANSLATION_QUEUE_KEY, JSON.stringify(queue)) }
+    function getQueuedTask(bookId) { return loadTranslationQueue()[bookId] }
+    function updateQueuedTask(bookId, updates) {
+      const queue = loadTranslationQueue()
+      queue[bookId] = { ...(queue[bookId] || {}), ...updates, updatedAt: Date.now() }
+      saveTranslationQueue(queue)
+    }
+    function removeQueuedTask(bookId) {
+      const queue = loadTranslationQueue()
+      delete queue[bookId]
+      saveTranslationQueue(queue)
+    }
+    
+    const TRANSLATION_COMPLETE_KEY = 'translation-complete'
+    function getCompletedBooks() {
+      try { return JSON.parse(localStorage.getItem(TRANSLATION_COMPLETE_KEY) || '{}') }
+      catch { return {} }
+    }
+    function markTranslationComplete(bookId, paragraphCount) {
+      const completed = getCompletedBooks()
+      completed[bookId] = { completedAt: Date.now(), count: paragraphCount }
+      localStorage.setItem(TRANSLATION_COMPLETE_KEY, JSON.stringify(completed))
+    }
+    function isTranslationComplete(bookId) { return !!getCompletedBooks()[bookId] }
+
+    // ========== ZIP Loader ==========
+    async function makeZipLoader(file) {
+      const { ZipReader, BlobReader, TextWriter, BlobWriter } = await import('https://cdn.jsdelivr.net/npm/@zip.js/zip.js/+esm')
+      const reader = new ZipReader(new BlobReader(file))
+      const entries = await reader.getEntries()
+      const map = new Map(entries.map(e => [e.filename, e]))
+      return {
+        entries,
+        async loadText(fn) { const e = map.get(fn); return e ? e.getData(new TextWriter()) : null },
+        async loadBlob(fn) { const e = map.get(fn); return e ? e.getData(new BlobWriter()) : null },
+        getSize(fn) { return map.get(fn)?.uncompressedSize ?? 0 }
+      }
+    }
+
+    function hashText(text) {
+      let hash = 0
+      for (let i = 0; i < text.length; i++) { hash = ((hash << 5) - hash) + text.charCodeAt(i); hash = hash & hash }
+      return hash.toString(36)
+    }
+
+    async function translateBatch(paragraphs) {
+      const numbered = paragraphs.map((p, i) => `[${i + 1}] ${p}`).join('\n\n')
+      const res = await fetch(TRANSLATE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 4096, messages: [{ role: 'user', content: `将以下英文段落翻译成中文。保持段落编号，只输出翻译结果。\n\n${numbered}` }] })
+      })
+      if (!res.ok) throw new Error(`API ${res.status}`)
+      const data = await res.json()
+      const content = data.content?.[0]?.text || ''
+      const translations = {}
+      let currentNum = null, currentText = []
+      for (const line of content.split('\n')) {
+        const match = line.match(/^\[(\d+)\]\s*(.*)/)
+        if (match) {
+          if (currentNum !== null && currentText.length) translations[currentNum] = currentText.join('\n').trim()
+          currentNum = parseInt(match[1]); currentText = match[2] ? [match[2]] : []
+        } else if (currentNum !== null && line.trim()) currentText.push(line)
+      }
+      if (currentNum !== null && currentText.length) translations[currentNum] = currentText.join('\n').trim()
+      return translations
+    }
+
+    async function startBookTranslation(bookId, file) {
+      if (activeTranslations.has(bookId)) return
+      activeTranslations.add(bookId)
+      if (!file || !(file instanceof Blob)) {
+        translationStates.set(bookId, { status: 'error', message: '文件无效' })
+        updateBookBadge(bookId); activeTranslations.delete(bookId); return
+      }
+      let task = getQueuedTask(bookId), allParagraphs = task?.paragraphs || null
+      const existing = await getBookTranslations(bookId)
+      const existingSet = new Set(Object.keys(existing))
+      try {
+        if (!allParagraphs) {
+          translationStates.set(bookId, { status: 'parsing', message: '解析中...' }); updateBookBadge(bookId)
+          const [{ EPUB }, loader] = await Promise.all([import(FOLIATE_CDN + 'epub.js'), makeZipLoader(file)])
+          const book = await new EPUB(loader).init()
+          const sections = book.sections || []
+          translationStates.set(bookId, { status: 'extracting', message: '提取文本...' }); updateBookBadge(bookId)
+          allParagraphs = []
+          for (let i = 0; i < sections.length; i++) {
+            if (i % 5 === 0) await new Promise(r => setTimeout(r, 0))
+            try {
+              const doc = await sections[i].createDocument()
+              if (!doc) continue
+              doc.querySelectorAll('p').forEach(p => {
+                const text = p.textContent?.trim()
+                if (text && text.length >= 10 && !/[\u4e00-\u9fff]/.test(text)) allParagraphs.push({ text, hash: hashText(text) })
+              })
+            } catch {}
+          }
+          updateQueuedTask(bookId, { status: 'translating', paragraphs: allParagraphs, totalCount: allParagraphs.length, startedAt: Date.now() })
+        }
+        const remaining = allParagraphs.filter(p => !existingSet.has(p.hash))
+        if (remaining.length === 0) {
+          markTranslationComplete(bookId, Object.keys(await getBookTranslations(bookId)).length)
+          translationStates.set(bookId, { status: 'done', message: '✓ 已完成' })
+          updateBookBadge(bookId); removeQueuedTask(bookId); activeTranslations.delete(bookId); renderBooks(); return
+        }
+        const BATCH_SIZE = 10, totalParagraphs = allParagraphs.length, alreadyTranslated = totalParagraphs - remaining.length
+        for (let i = 0; i < remaining.length; i += BATCH_SIZE) {
+          const batch = remaining.slice(i, i + BATCH_SIZE)
+          const done = alreadyTranslated + i + batch.length, percent = Math.round(done / totalParagraphs * 100)
+          translationStates.set(bookId, { status: 'translating', message: `${percent}%`, progress: percent }); updateBookBadge(bookId)
+          updateQueuedTask(bookId, { progress: percent, lastBatch: i, totalParagraphs })
+          try {
+            const results = await translateBatch(batch.map(p => p.text))
+            const newTrans = []
+            for (let j = 0; j < batch.length; j++) {
+              if (results[j + 1]) newTrans.push({ bookId, hash: batch[j].hash, original: batch[j].text, translation: results[j + 1], savedAt: Date.now() })
+            }
+            if (newTrans.length) await importTranslations(newTrans)
+          } catch (e) { console.error('Batch error:', e) }
+          await new Promise(r => setTimeout(r, 500))
+        }
+        const finalCount = Object.keys(await getBookTranslations(bookId)).length
+        markTranslationComplete(bookId, finalCount)
+        translationStates.set(bookId, { status: 'done', message: '✓ 已完成' }); updateBookBadge(bookId); removeQueuedTask(bookId); renderBooks()
+        if (isDropboxConfigured() && isLoggedIn()) syncBookTranslations(bookId).catch(() => {})
+      } catch (e) {
+        translationStates.set(bookId, { status: 'error', message: '失败' }); updateQueuedTask(bookId, { status: 'error', error: e.message }); updateBookBadge(bookId)
+      } finally { activeTranslations.delete(bookId) }
+    }
+
+    async function resumeQueuedTranslations() {
+      const queue = loadTranslationQueue(), books = await getAllBooks(), bookMap = new Map(books.map(b => [b.id, b]))
+      for (const [bookId, task] of Object.entries(queue)) {
+        if (task.status === 'error') continue
+        const book = bookMap.get(bookId)
+        if (book?.file) {
+          translationStates.set(bookId, { status: 'translating', message: `继续 ${task.progress || 0}%` })
+          setTimeout(() => startBookTranslation(bookId, book.file), 500)
+        }
+      }
+    }
+
+    // Note: beforeunload warning removed - translation progress is persisted and auto-resumes
+
+    function showToast(msg, dur = 3000) {
+      document.querySelector('.toast-notification')?.remove()
+      const t = document.createElement('div'); t.className = 'toast-notification'; t.textContent = msg
+      t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg-bar);color:var(--text);padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000;font-size:14px;border:1px solid var(--border);'
+      document.body.appendChild(t); setTimeout(() => t.remove(), dur)
+    }
+
+    function updateBookBadge(bookId) {
+      const badge = document.querySelector(`[data-book-id="${bookId}"] .book-translate-badge`)
+      if (!badge) return
+      const state = translationStates.get(bookId)
+      if (!state) { badge.style.display = 'none'; return }
+      badge.style.display = 'block'; badge.className = 'book-translate-badge'
+      if (state.status === 'done') { badge.classList.add('done'); badge.textContent = state.message }
+      else if (state.status === 'error') { badge.classList.add('error'); badge.textContent = state.message }
+      else badge.textContent = state.message || '...'
+    }
+
+    // ========== 主题 ==========
+    const themeBtn = document.getElementById('theme-toggle')
+    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
+    themeBtn.addEventListener('click', () => { themeBtn.textContent = toggleTheme() === 'dark' ? '☀️' : '🌙' })
+
+    // ========== DOM ==========
+    const cloudIcon = document.getElementById('cloud-icon')
+    const syncTimeEl = document.getElementById('sync-time')
+    const logoutBtn = document.getElementById('logout-btn')
+    const addBookCard = document.getElementById('add-book-card')
+    const fileInput = document.getElementById('file-input')
+    const bookGrid = document.getElementById('book-grid')
+
+    // ========== Dropbox 同步 ==========
+    await handleAuthCallback()
+    let isSyncing = false
+    let autoSyncInterval = null
+
+    function updateSyncUI() {
+      if (!isDropboxConfigured() || !isLoggedIn()) {
+        syncTimeEl.textContent = '未登录'
+        logoutBtn.style.display = 'none'
+        cloudIcon.title = '点击登录 Dropbox'
+        return
+      }
+      const status = getSyncStatus()
+      if (status?.lastSync) {
+        const ago = Math.round((Date.now() - status.lastSync) / 60000)
+        syncTimeEl.textContent = ago < 1 ? '刚刚' : `${ago}分钟前`
+      } else {
+        syncTimeEl.textContent = '已连接'
+      }
+      logoutBtn.style.display = 'inline'
+      cloudIcon.title = '点击同步'
+    }
+
+    async function doSync(silent = false) {
+      if (isSyncing) return
+      if (!isDropboxConfigured() || !isLoggedIn()) {
+        if (!silent) startAuth()
+        return
+      }
+      isSyncing = true
+      cloudIcon.classList.add('spinning')
+      try {
+        const result = await syncWithDropbox(() => {})
+        if (result.success) { await renderBooks(); updateToolCounts() }
+      } catch (e) { console.error('Sync error:', e) }
+      finally { isSyncing = false; cloudIcon.classList.remove('spinning'); updateSyncUI() }
+    }
+
+    cloudIcon.addEventListener('click', () => doSync(false))
+    logoutBtn.addEventListener('click', () => {
+      if (confirm('退出 Dropbox？')) { clearAccessToken(); updateSyncUI(); stopAutoSync() }
+    })
+
+    function startAutoSync() {
+      if (autoSyncInterval) return
+      autoSyncInterval = setInterval(() => {
+        if (isDropboxConfigured() && isLoggedIn()) doSync(true)
+      }, 60000) // 每60秒同步一次
+    }
+
+    function stopAutoSync() {
+      if (autoSyncInterval) { clearInterval(autoSyncInterval); autoSyncInterval = null }
+    }
+
+    updateSyncUI()
+    if (isDropboxConfigured() && isLoggedIn()) {
+      doSync(true)
+      startAutoSync()
+    }
+
+    // ========== 文件上传 ==========
+    addBookCard.addEventListener('click', () => fileInput.click())
+    addBookCard.addEventListener('dragover', e => { e.preventDefault(); addBookCard.classList.add('dragover') })
+    addBookCard.addEventListener('dragleave', () => addBookCard.classList.remove('dragover'))
+    addBookCard.addEventListener('drop', e => {
+      e.preventDefault(); addBookCard.classList.remove('dragover')
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0])
+    })
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); fileInput.value = '' })
+
+    // Also support drag & drop anywhere on the page
+    document.body.addEventListener('dragover', e => e.preventDefault())
+    document.body.addEventListener('drop', e => {
+      e.preventDefault()
+      if (e.dataTransfer.files[0]?.name.toLowerCase().endsWith('.epub')) handleFile(e.dataTransfer.files[0])
+    })
+
+    async function handleFile(file) {
+      if (!file.name.toLowerCase().endsWith('.epub')) { alert('请选择 EPUB 文件'); return }
+      const bookId = crypto.randomUUID()
+      const book = { id: bookId, title: file.name.replace(/\.epub$/i, ''), author: '', coverBlob: null, file, addedAt: Date.now(), lastReadAt: null, progress: 0, lastLocation: null }
+      await saveBook(book); await renderBooks()
+      if (isDropboxConfigured() && isLoggedIn()) {
+        try {
+          const { uploadBook } = await import('./dropbox.js')
+          await uploadBook(bookId, file); await pushToDropbox()
+        } catch (e) { console.error('Upload failed:', e) }
+      }
+      startBookTranslation(bookId, file)
+    }
+
+    // ========== 渲染书架 ==========
+    function strToColor(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return `hsl(${Math.abs(h) % 360}, 45%, 65%)` }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
+    function formatAuthor(a) {
+      if (!a) return ''; if (typeof a === 'string') return a
+      if (Array.isArray(a)) return a.map(x => typeof x === 'string' ? x : (x.name || String(x))).join(', ')
+      return a.name || String(a)
+    }
+
+    async function renderBooks() {
+      let books = await getAllBooks()
+      books.sort((a, b) => (b.lastReadAt || b.addedAt) - (a.lastReadAt || a.addedAt))
+      
+      // Deduplicate
+      const seen = new Map(), toDelete = []
+      for (const book of books) {
+        const key = (book.title || '').toLowerCase().trim()
+        if (seen.has(key)) toDelete.push(book.id); else seen.set(key, book)
+      }
+      if (toDelete.length > 0) { for (const id of toDelete) await deleteBook(id); books = books.filter(b => !toDelete.includes(b.id)) }
+      
+      // Clear grid (keep add card)
+      bookGrid.querySelectorAll('.book-card').forEach(el => el.remove())
+      
+      if (books.length === 0) {
+        const hint = document.createElement('div'); hint.className = 'empty-hint'; hint.textContent = '还没有书籍，点击上方 + 添加'
+        bookGrid.appendChild(hint)
+        return
+      }
+      
+      document.querySelector('.empty-hint')?.remove()
+      
+      for (const book of books) {
+        const card = document.createElement('div'); card.className = 'book-card'; card.setAttribute('data-book-id', book.id)
+        
+        let coverHTML
+        if (book.coverBlob) { coverHTML = `<div class="book-cover"><img src="${URL.createObjectURL(book.coverBlob)}" alt=""></div>` }
+        else { coverHTML = `<div class="book-cover" style="background:${strToColor(book.title || '')}">${esc((book.title || 'UN').slice(0, 2).toUpperCase())}</div>` }
+        
+        const progressHTML = book.progress > 0 ? `<div class="book-progress">${Math.round(book.progress * 100)}%</div>` : ''
+        
+        const translations = await getBookTranslations(book.id)
+        const translationCount = Object.keys(translations).length
+        const activeState = translationStates.get(book.id)
+        const queuedTask = getQueuedTask(book.id)
+        const completed = isTranslationComplete(book.id)
+        
+        let badgeHTML = ''
+        let translateInfoHTML = ''
+        if (activeState && activeState.status !== 'done') {
+          const cls = activeState.status === 'error' ? 'error' : ''
+          badgeHTML = `<div class="book-translate-badge ${cls}">${activeState.message}</div>`
+        } else if (completed) {
+          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
+        } else if (queuedTask && queuedTask.status !== 'error') {
+          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续 ${queuedTask.progress || 0}%</div>`
+        } else if (translationCount > 0 && book.file) {
+          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续 (${translationCount})</div>`
+        } else if (book.file) {
+          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">翻译</div>`
+        }
+        
+        card.innerHTML = `${coverHTML}${badgeHTML}<div class="book-info"><div class="book-title">${esc(book.title || 'Untitled')}</div>${book.author ? `<div class="book-author">${esc(formatAuthor(book.author))}</div>` : ''}${progressHTML}${translateInfoHTML}</div><button class="book-delete" title="删除">×</button>`
+        
+        card.addEventListener('click', () => {
+          const url = `reader.html?id=${book.id}`
+          if (activeTranslations.size > 0) window.open(url, '_blank')
+          else location.href = url
+        })
+        
+        card.querySelector('.book-delete').addEventListener('click', e => {
+          e.stopPropagation(); if (confirm(`删除 "${book.title}"?`)) deleteBook(book.id).then(renderBooks)
+        })
+        
+        const translateBtn = card.querySelector('[data-action="translate"]')
+        if (translateBtn && book.file) translateBtn.addEventListener('click', e => { e.stopPropagation(); startBookTranslation(book.id, book.file) })
+        
+        bookGrid.appendChild(card)
+      }
+    }
+
+    async function updateToolCounts() {
+      const vocab = await getAllVocabulary(), highlights = await getAllHighlights()
+      document.getElementById('vocab-count').textContent = vocab.length
+      document.getElementById('highlight-count').textContent = highlights.length
+    }
+
+    // ========== 初始化 ==========
+    await renderBooks()
+    updateToolCounts()
+    await resumeQueuedTranslations()
+  </script>
+</body>
+</html>

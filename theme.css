@@ -1,0 +1,88 @@
+/* Font */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-mono: 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', monospace;
+  --font-sans: 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Solarized Color Scheme */
+:root {
+  /* Solarized base colors */
+  --sol-base03:  #002b36;
+  --sol-base02:  #073642;
+  --sol-base01:  #586e75;
+  --sol-base00:  #657b83;
+  --sol-base0:   #839496;
+  --sol-base1:   #93a1a1;
+  --sol-base2:   #eee8d5;
+  --sol-base3:   #fdf6e3;
+  
+  /* Solarized accent colors */
+  --sol-yellow:  #b58900;
+  --sol-orange:  #cb4b16;
+  --sol-red:     #dc322f;
+  --sol-magenta: #d33682;
+  --sol-violet:  #6c71c4;
+  --sol-blue:    #268bd2;
+  --sol-cyan:    #2aa198;
+  --sol-green:   #859900;
+}
+
+/* Light theme (default) */
+:root, [data-theme="light"] {
+  --bg:            var(--sol-base3);
+  --bg-card:       var(--sol-base2);
+  --bg-bar:        var(--sol-base2);
+  --border:        var(--sol-base1);
+  --text:          var(--sol-base00);
+  --text-secondary: var(--sol-base1);
+  --text-muted:    var(--sol-base1);
+  --hover:         var(--sol-base2);
+  --accent:        var(--sol-blue);
+  --success:       var(--sol-green);
+  --danger:        var(--sol-red);
+  --highlight:     var(--sol-yellow);
+  --highlight-border: var(--sol-yellow);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg:            var(--sol-base03);
+  --bg-card:       var(--sol-base02);
+  --bg-bar:        var(--sol-base02);
+  --border:        var(--sol-base01);
+  --text:          var(--sol-base0);
+  --text-secondary: var(--sol-base01);
+  --text-muted:    var(--sol-base01);
+  --hover:         var(--sol-base02);
+  --accent:        var(--sol-blue);
+  --success:       var(--sol-cyan);
+  --danger:        var(--sol-red);
+  --highlight:     var(--sol-yellow);
+  --highlight-border: var(--sol-orange);
+}
+
+/* Global font */
+body {
+  font-family: var(--font-sans);
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.theme-toggle:hover {
+  background: var(--hover);
+}

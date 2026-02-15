@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading...</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      height: 100vh; display: flex; flex-direction: column; 
+      background: var(--bg); color: var(--text); overflow: hidden;
+    }
+
+    .toolbar {
+      display: flex; align-items: center; padding: 6px 12px; 
+      background: var(--bg-bar); border-bottom: 1px solid var(--border); 
+      gap: 8px; z-index: 10; min-height: 44px;
+    }
+    .toolbar button {
+      background: none; border: none; cursor: pointer; font-size: 18px;
+      padding: 4px 8px; border-radius: 4px; color: var(--text);
+    }
+    .toolbar button:hover { background: var(--hover); }
+    .toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .toolbar button:disabled:hover { background: none; }
+    .toolbar button.active { color: var(--accent); }
+    .toolbar .title {
+      flex: 1; font-size: 14px; font-weight: 500; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; color: var(--text);
+    }
+    .toolbar .chapter {
+      font-size: 12px; color: var(--text-secondary); max-width: 200px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    #reader-container { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+    #reader-container foliate-view { width: 100%; height: 100%; }
+
+    .bottom-bar {
+      display: none; /* Hidden by default */
+      align-items: center; padding: 6px 16px; 
+      background: var(--bg-bar); border-top: 1px solid var(--border); 
+      gap: 10px; z-index: 10;
+    }
+    .bottom-bar input[type="range"] { flex: 1; height: 4px; cursor: pointer; accent-color: var(--accent); }
+    .progress-text { font-size: 12px; color: var(--text-secondary); min-width: 36px; text-align: right; }
+
+    .toc-overlay { display: none; position: fixed; inset: 0; z-index: 100; }
+    .toc-overlay.open { display: flex; }
+    .toc-backdrop { flex: 1; background: rgba(0,0,0,0.5); }
+    .toc-panel {
+      width: 300px; max-width: 80vw; background: var(--bg-bar); overflow-y: auto; padding: 16px;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.2);
+    }
+    .toc-panel h3 { margin-bottom: 12px; font-size: 15px; font-weight: 600; color: var(--text); }
+    .toc-item {
+      padding: 8px 4px; border-bottom: 1px solid var(--border); cursor: pointer;
+      font-size: 13px; color: var(--text-secondary); line-height: 1.4;
+    }
+    .toc-item:hover { color: var(--accent); }
+    .toc-item.active { color: var(--accent); font-weight: 600; }
+    .toc-item.depth-1 { padding-left: 24px; }
+    .toc-item.depth-2 { padding-left: 48px; }
+    .toc-item.depth-3 { padding-left: 72px; }
+
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; font-size: 15px; color: var(--text-muted);
+    }
+
+    /* Translation popup */
+    .dict-popup {
+      position: fixed; z-index: 200; background: var(--bg-bar); 
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 16px; max-width: 300px; min-width: 150px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: none;
+      pointer-events: none;
+    }
+    .dict-popup.show { display: block; pointer-events: auto; }
+    .dict-popup .word { font-weight: 600; color: var(--accent); margin-bottom: 6px; font-size: 15px; }
+    .dict-popup .phonetic { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+    .dict-popup .translation { font-size: 14px; color: var(--text); line-height: 1.5; }
+    .dict-popup .loading-text { font-size: 13px; color: var(--text-muted); }
+    .dict-popup .error { font-size: 13px; color: #f87171; }
+
+    /* Delete highlight popup */
+    .delete-popup {
+      position: fixed; z-index: 200; background: var(--bg-bar);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: none; cursor: pointer;
+      font-size: 13px; color: #dc2626;
+      pointer-events: none;
+    }
+    .delete-popup:hover { background: #fef2f2; }
+    .delete-popup.show { display: block; pointer-events: auto; }
+
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="btn-back" title="Back to bookshelf">&#8592;</button>
+    <span class="title" id="book-title">Loading...</span>
+    <span class="chapter" id="chapter-label"></span>
+    <button id="btn-translate" title="显示翻译">🌐</button>
+    <button id="btn-vocab" title="Export vocabulary">📖</button>
+    <button id="btn-export-hl" title="Export highlights">📝</button>
+    <button id="btn-theme" class="theme-toggle" title="切换主题">🌙</button>
+    <button id="btn-toc" title="Table of Contents">&#9776;</button>
+  </div>
+
+  <div id="reader-container">
+    <div class="loading" id="loading">Loading book...</div>
+  </div>
+
+  <div class="bottom-bar">
+    <input type="range" id="progress-slider" min="0" max="1" step="any" value="0">
+    <span class="progress-text" id="progress-text">0%</span>
+  </div>
+
+  <div class="toc-overlay" id="toc-overlay">
+    <div class="toc-panel" id="toc-panel">
+      <h3>Table of Contents</h3>
+      <div id="toc-list"></div>
+    </div>
+    <div class="toc-backdrop" id="toc-backdrop"></div>
+  </div>
+
+  <div class="dict-popup" id="dict-popup">
+    <div class="word" id="dict-word"></div>
+    <div class="phonetic" id="dict-phonetic"></div>
+    <div class="translation" id="dict-translation"></div>
+  </div>
+
+  <div class="delete-popup" id="delete-popup">🗑 删除划线</div>
+
+  <script type="module">
+    // Global error handler to catch any uncaught errors
+    window.addEventListener('error', (e) => {
+      console.error('❌ Global error:', e.message, e.filename, e.lineno)
+    })
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('❌ Unhandled rejection:', e.reason)
+    })
+    
+    console.log('📚 Reader script starting...')
+    
+    import { getBook, saveBook, saveWord, getAllVocabulary, saveHighlight, getAllHighlights, deleteHighlightByText, getBookTranslations, hashText } from './db.js'
+    import { toggleTheme, getTheme } from './theme.js'
+    import { isDropboxConfigured, isLoggedIn } from './dropbox.js'
+    import { pushToDropbox } from './sync.js'
+    
+    console.log('📚 Imports completed')
+    
+    // Debounced sync to avoid too many API calls
+    let syncTimeout = null
+    function debouncedSync() {
+      if (!isDropboxConfigured() || !isLoggedIn()) return
+      if (syncTimeout) clearTimeout(syncTimeout)
+      syncTimeout = setTimeout(() => {
+        pushToDropbox().catch(e => console.error('Auto sync failed:', e))
+      }, 3000) // Sync 3 seconds after last change
+    }
+    
+    // Periodic sync every 60 seconds (in case user stays on same page)
+    setInterval(() => {
+      if (isDropboxConfigured() && isLoggedIn()) {
+        pushToDropbox().catch(e => console.error('Periodic sync failed:', e))
+      }
+    }, 60000)
+    
+    // Theme toggle
+    const themeBtn = document.getElementById('btn-theme')
+    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
+    themeBtn.addEventListener('click', () => {
+      const newTheme = toggleTheme()
+      themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙'
+      // Update reader content styles
+      updateReaderTheme(newTheme)
+    })
+
+    function updateReaderTheme(theme) {
+      // Update foliate-view styles for theme
+      if (window.currentView) {
+        const isDark = theme === 'dark'
+        window.currentView.renderer.setStyles?.(`
+          @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=swap');
+          @namespace epub "http://www.idpf.org/2007/ops";
+          html, body { 
+            background: ${isDark ? '#002b36' : '#fdf6e3'} !important; 
+            color: ${isDark ? '#839496' : '#657b83'} !important; 
+            font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', -apple-system, sans-serif !important;
+            padding: 20px !important;
+          }
+          p, li, blockquote, dd { line-height: 1.8; }
+          p { margin-bottom: 1.2em !important; text-indent: 0 !important; }
+          a, a:link, a:visited { color: ${isDark ? '#859900' : '#859900'} !important; text-decoration: underline; }
+          a:hover { color: ${isDark ? '#b58900' : '#b58900'} !important; }
+          .zh-translation { font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif !important; font-weight: 400; color: ${isDark ? '#586e75' : '#93a1a1'}; }
+        `)
+      }
+    }
+
+    const FOLIATE_CDN = 'https://cdn.jsdelivr.net/gh/johnfactotum/foliate-js@main/'
+
+    // Get book ID from URL
+    const bookId = new URLSearchParams(location.search).get('id')
+    if (!bookId) { location.href = 'index.html'; throw new Error('no id') }
+
+    // Load foliate-js
+    await import(FOLIATE_CDN + 'view.js')
+
+    // Load book from IndexedDB (local cache)
+    let bookData = await getBook(bookId)
+    
+    // If not in local cache, try to download from Dropbox
+    if (!bookData || !bookData.file) {
+      if (isDropboxConfigured() && isLoggedIn()) {
+        document.getElementById('loading').textContent = '从云端下载书籍...'
+        try {
+          const { downloadBook, downloadData } = await import('./dropbox.js')
+          
+          // Get metadata from cloud
+          const cloudData = await downloadData()
+          const bookMeta = cloudData?.books?.find(b => b.id === bookId)
+          
+          if (bookMeta) {
+            // Download the actual book file
+            const blob = await downloadBook(bookId)
+            if (blob) {
+              bookData = {
+                ...bookMeta,
+                file: new File([blob], `${bookMeta.title || bookId}.epub`, { type: 'application/epub+zip' }),
+              }
+              // Cache locally
+              await saveBook(bookData)
+            }
+          }
+        } catch (e) {
+          console.error('Failed to download from Dropbox:', e)
+        }
+      }
+    }
+    
+    if (!bookData || !bookData.file) { 
+      alert('Book not found'); 
+      location.href = 'index.html'; 
+      throw new Error('not found') 
+    }
+
+    // Create reader view
+    const container = document.getElementById('reader-container')
+    const view = document.createElement('foliate-view')
+    container.append(view)
+
+    // --- Highlight restoration ---
+    // Cache highlights for current book (loaded once)
+    let cachedHighlights = null
+    
+    // Translation state (declared early for load event handler)
+    let translationCache = null
+    let showTranslations = localStorage.getItem(`showTranslations_${bookId}`) === 'true'
+    let currentDocRef = null
+    
+    async function loadHighlightsCache() {
+      if (cachedHighlights !== null) return cachedHighlights
+      const all = await getAllHighlights()
+      cachedHighlights = all.filter(h => h.bookId === bookId)
+      console.log(`Loaded ${cachedHighlights.length} highlights for this book`)
+      return cachedHighlights
+    }
+
+    // Apply highlight style to a range (handles cross-element selections)
+    function applyHighlightStyle(range, doc) {
+      const highlightStyle = {
+        className: 'epub-highlight',
+        textDecoration: 'underline solid #b58900',
+        textDecorationThickness: '1.5px',
+        textUnderlineOffset: '2px'
+      }
+      
+      // Try simple case first
+      try {
+        const span = doc.createElement('span')
+        span.className = highlightStyle.className
+        span.style.textDecoration = highlightStyle.textDecoration
+        span.style.textDecorationThickness = highlightStyle.textDecorationThickness
+        span.style.textUnderlineOffset = highlightStyle.textUnderlineOffset
+        range.surroundContents(span)
+        return true
+      } catch (e) {
+        // Range spans multiple elements - wrap each text node individually
+        const textNodes = []
+        const walker = doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT)
+        let node
+        while (node = walker.nextNode()) {
+          if (range.intersectsNode(node)) {
+            textNodes.push(node)
+          }
+        }
+        
+        for (const textNode of textNodes) {
+          // Determine the portion of this text node that's in the range
+          let startOffset = 0
+          let endOffset = textNode.length
+          
+          if (textNode === range.startContainer) {
+            startOffset = range.startOffset
+          }
+          if (textNode === range.endContainer) {
+            endOffset = range.endOffset
+          }
+          
+          if (startOffset >= endOffset) continue
+          
+          // Split and wrap
+          const span = doc.createElement('span')
+          span.className = highlightStyle.className
+          span.style.textDecoration = highlightStyle.textDecoration
+          span.style.textDecorationThickness = highlightStyle.textDecorationThickness
+          span.style.textUnderlineOffset = highlightStyle.textUnderlineOffset
+          
+          const nodeRange = doc.createRange()
+          nodeRange.setStart(textNode, startOffset)
+          nodeRange.setEnd(textNode, endOffset)
+          
+          try {
+            nodeRange.surroundContents(span)
+          } catch (e2) {
+            // Skip this node if it still fails
+            console.warn('Could not highlight node:', e2)
+          }
+        }
+        return true
+      }
+    }
+
+    // Find and highlight text in document
+    function highlightTextInDoc(doc, searchText) {
+      if (!searchText || searchText.length < 2) return false
+      
+      // Normalize search text
+      const normalizedSearch = searchText.replace(/\s+/g, ' ').trim()
+      
+      // Get all text content and build a map of positions to nodes
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+      const textNodes = []
+      let fullText = ''
+      
+      let node
+      while (node = walker.nextNode()) {
+        const start = fullText.length
+        fullText += node.textContent
+        textNodes.push({ node, start, end: fullText.length })
+      }
+      
+      // Normalize full text for searching
+      const normalizedFull = fullText.replace(/\s+/g, ' ')
+      
+      // Find the search text
+      const idx = normalizedFull.indexOf(normalizedSearch)
+      if (idx === -1) return false
+      
+      // Map normalized index back to original position (approximate)
+      // For simplicity, search in original text too
+      const originalIdx = fullText.indexOf(searchText)
+      if (originalIdx === -1) {
+        // Try with normalized spaces
+        let pos = 0, normPos = 0
+        for (let i = 0; i < fullText.length && normPos < idx; i++) {
+          if (/\s/.test(fullText[i])) {
+            while (i + 1 < fullText.length && /\s/.test(fullText[i + 1])) i++
+            normPos++
+          } else {
+            normPos++
+          }
+          pos = i + 1
+        }
+        // Fall back to simple search
+        return false
+      }
+      
+      // Find which text nodes contain the start and end
+      const startPos = originalIdx
+      const endPos = originalIdx + searchText.length
+      
+      let startNode = null, startOffset = 0
+      let endNode = null, endOffset = 0
+      
+      for (const tn of textNodes) {
+        if (!startNode && tn.end > startPos) {
+          startNode = tn.node
+          startOffset = startPos - tn.start
+        }
+        if (tn.end >= endPos) {
+          endNode = tn.node
+          endOffset = endPos - tn.start
+          break
+        }
+      }
+      
+      if (!startNode || !endNode) return false
+      
+      // If same node, simple case
+      if (startNode === endNode) {
+        const range = doc.createRange()
+        range.setStart(startNode, startOffset)
+        range.setEnd(endNode, endOffset)
+        return applyHighlightStyle(range, doc)
+      }
+      
+      // Multi-node: highlight each node's portion
+      // This is complex, skip for now (surroundContents doesn't work across nodes)
+      return false
+    }
+
+    // Restore all highlights for current document
+    async function restoreHighlights(doc) {
+      const highlights = await loadHighlightsCache()
+      let restored = 0
+      for (const hl of highlights) {
+        if (highlightTextInDoc(doc, hl.text)) {
+          restored++
+        }
+      }
+      if (restored > 0) {
+        console.log(`Restored ${restored} highlights in this section`)
+      }
+    }
+
+    // Setup load event listener BEFORE opening (critical for timing)
+    view.addEventListener('load', ({ detail: { doc, index } }) => {
+      console.log('Document loaded, index:', index)
+      
+      // Restore saved highlights for this section
+      restoreHighlights(doc)
+      
+      // Store doc reference for translation toggle
+      currentDocRef = doc
+      
+      // Load translations and update button state
+      loadTranslationCache().then(() => {
+        updateTranslateButton()
+        // Inject translations if enabled
+        if (showTranslations) {
+          injectTranslations(doc)
+        }
+      })
+      
+      // Keyboard navigation (in doc)
+      doc.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft') view.goLeft()
+        else if (e.key === 'ArrowRight') view.goRight()
+        else if (e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); view.next() }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); view.prev() }
+      })
+      
+      // Track mouse drag state to distinguish click from selection
+      let mouseDownPos = null
+      let isSelecting = false
+      
+      doc.addEventListener('mousedown', e => {
+        mouseDownPos = { x: e.clientX, y: e.clientY }
+        isSelecting = false
+      })
+      
+      doc.addEventListener('mousemove', e => {
+        if (mouseDownPos) {
+          const dx = Math.abs(e.clientX - mouseDownPos.x)
+          const dy = Math.abs(e.clientY - mouseDownPos.y)
+          // If mouse moved more than 5px, consider it a selection drag
+          if (dx > 5 || dy > 5) {
+            isSelecting = true
+          }
+        }
+      })
+      
+      doc.addEventListener('mouseup', () => {
+        mouseDownPos = null
+      })
+      
+      // Detect touch device
+      const isTouchDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0
+      
+      // Click navigation - only close popups on PC, handle taps on mobile
+      doc.addEventListener('click', e => {
+        // Always close popups when clicking/tapping
+        hideDict()
+        hideDeletePopup()
+        
+        // Check if clicking on a highlight
+        const highlightSpan = e.target.closest?.('.epub-highlight')
+        if (highlightSpan) {
+          e.preventDefault()
+          e.stopPropagation()
+          showDeletePopup(highlightSpan, e, doc)
+          return
+        }
+        
+        // On PC: no click navigation (use keyboard instead)
+        // On mobile: tap left/right edges to navigate
+        if (!isTouchDevice()) return
+        
+        // Check if user has text selected - don't navigate
+        const sel = doc.getSelection()
+        if (sel && sel.toString().trim().length > 0) {
+          return
+        }
+        
+        if (e.target.closest?.('a[href]')) return
+        const width = (e.view || window).innerWidth
+        const x = e.clientX
+        if (x < width * 0.25) view.goLeft()
+        else if (x > width * 0.75) view.goRight()
+      })
+      
+      // Swipe gesture support for mobile
+      let touchStartX = null
+      let touchStartY = null
+      
+      doc.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX
+          touchStartY = e.touches[0].clientY
+        }
+      }, { passive: true })
+      
+      doc.addEventListener('touchend', e => {
+        if (touchStartX === null) return
+        
+        const touchEndX = e.changedTouches[0].clientX
+        const touchEndY = e.changedTouches[0].clientY
+        const dx = touchEndX - touchStartX
+        const dy = touchEndY - touchStartY
+        
+        // Require horizontal swipe (more horizontal than vertical, min 50px)
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+          // Check no text is selected
+          const sel = doc.getSelection()
+          if (sel && sel.toString().trim().length > 0) {
+            touchStartX = null
+            return
+          }
+          
+          if (dx > 0) {
+            view.goLeft()  // Swipe right = previous page
+          } else {
+            view.goRight() // Swipe left = next page
+          }
+        }
+        
+        touchStartX = null
+        touchStartY = null
+      }, { passive: true })
+      
+      // Selection listener for dictionary / highlight
+      doc.addEventListener('mouseup', () => {
+        setTimeout(() => {
+          const sel = doc.getSelection()
+          const text = sel?.toString().trim()
+          if (!text || text.length < 2) return
+          
+          console.log('Selected:', text)
+          const range = sel.getRangeAt(0)
+          const rect = range.getBoundingClientRect()
+          const viewRect = view.getBoundingClientRect()
+          const x = rect.left + viewRect.left
+          const y = rect.bottom + viewRect.top
+          
+          // Determine if it's a word or sentence
+          const isWord = !text.includes(' ') && text.length < 30 && /^[a-zA-Z'-]+$/.test(text)
+          
+          if (isWord) {
+            // Single word -> dictionary
+            showDict(text, x, y, bookData.title)
+          } else if (text.length < 2000) {
+            // Sentence/passage -> auto highlight
+            hideDict()
+            applyHighlight(text, range, doc)
+          }
+        }, 50)
+      })
+    })
+
+    try {
+      await view.open(bookData.file)
+    } catch (e) {
+      document.getElementById('loading').textContent = 'Failed to open book.'
+      console.error(e)
+      throw e
+    }
+
+    document.getElementById('loading').remove()
+
+    // Configure paginator
+    view.renderer.setAttribute('flow', 'paginated')
+    view.renderer.setAttribute('animated', '')
+    view.renderer.setAttribute('max-inline-size', '1200px')
+    view.renderer.setAttribute('max-column-count', '2')
+    view.renderer.setAttribute('gap', '2%')
+    view.renderer.setAttribute('margin', '8px')
+
+    // Store view globally for theme updates
+    window.currentView = view
+    
+    // Apply initial theme to reader content
+    const isDark = getTheme() === 'dark'
+    view.renderer.setStyles?.(`
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=swap');
+      @namespace epub "http://www.idpf.org/2007/ops";
+      html, body { 
+        background: ${isDark ? '#002b36' : '#fdf6e3'} !important; 
+        color: ${isDark ? '#839496' : '#657b83'} !important; 
+        font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', -apple-system, sans-serif !important;
+        padding: 20px !important;
+      }
+      p, li, blockquote, dd { line-height: 1.8; }
+      p { margin-bottom: 1.2em !important; text-indent: 0 !important; }
+      a, a:link, a:visited { color: ${isDark ? '#859900' : '#859900'} !important; text-decoration: underline; }
+      a:hover { color: ${isDark ? '#b58900' : '#b58900'} !important; }
+      .zh-translation { font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif !important; font-weight: 400; color: ${isDark ? '#586e75' : '#93a1a1'}; }
+    `)
+
+    // Update metadata from the parsed book
+    const meta = view.book.metadata || {}
+    if (meta.title) bookData.title = meta.title
+    if (meta.author) {
+      bookData.author = Array.isArray(meta.author)
+        ? meta.author.map(a => typeof a === 'string' ? a : (a.name || a)).join(', ')
+        : String(meta.author)
+    }
+
+    // Extract cover if we don't have one
+    if (!bookData.coverBlob) {
+      try { bookData.coverBlob = await view.book.getCover() } catch {}
+    }
+
+    const title = bookData.title || 'Untitled'
+    document.getElementById('book-title').textContent = title
+    document.title = title
+
+    // Navigate to saved position or start
+    console.log('📚 Initializing view position...')
+    try {
+      if (bookData.lastLocation) {
+        await view.init({ lastLocation: bookData.lastLocation })
+      } else {
+        await view.init({ showTextStart: true })
+      }
+      console.log('📚 View position initialized')
+    } catch (e) {
+      console.warn('⚠️ Failed to restore position:', e.message)
+      // Clear corrupted location and retry once
+      bookData.lastLocation = null
+      await saveBook(bookData)
+      try {
+        await view.init({ showTextStart: true })
+      } catch (e2) {
+        console.error('❌ View init failed completely:', e2)
+      }
+    }
+
+    // --- Keyboard navigation on main document (so it works immediately) ---
+    document.addEventListener('keydown', e => {
+      // Don't intercept if user is typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+      
+      if (e.key === 'ArrowLeft') { e.preventDefault(); view.goLeft() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); view.goRight() }
+      else if (e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); view.next() }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); view.prev() }
+    })
+    
+    // Focus the container so keyboard works immediately
+    container.setAttribute('tabindex', '0')
+    container.focus()
+
+    // --- Progress tracking ---
+    const slider = document.getElementById('progress-slider')
+    const progressText = document.getElementById('progress-text')
+    const chapterLabel = document.getElementById('chapter-label')
+
+    view.addEventListener('relocate', ({ detail }) => {
+      const fraction = detail.fraction || 0
+      slider.value = fraction
+      progressText.textContent = `${Math.round(fraction * 100)}%`
+
+      if (detail.tocItem) {
+        chapterLabel.textContent = detail.tocItem.label || ''
+      }
+
+      // Save progress
+      bookData.progress = fraction
+      bookData.lastLocation = detail.cfi
+      bookData.lastReadAt = Date.now()
+      saveBook(bookData)
+      debouncedSync()
+    })
+
+    slider.addEventListener('input', () => {
+      view.goToFraction(parseFloat(slider.value))
+    })
+
+    // --- Dictionary / Translation ---
+    const dictPopup = document.getElementById('dict-popup')
+    const dictWord = document.getElementById('dict-word')
+    const dictPhonetic = document.getElementById('dict-phonetic')
+    const dictTranslation = document.getElementById('dict-translation')
+
+    function hideDict() {
+      dictPopup.classList.remove('show')
+    }
+
+    // --- Delete highlight popup ---
+    const deletePopup = document.getElementById('delete-popup')
+    let pendingDeleteSpan = null
+    let pendingDeleteDoc = null
+
+    function hideDeletePopup() {
+      deletePopup.classList.remove('show')
+      pendingDeleteSpan = null
+      pendingDeleteDoc = null
+    }
+
+    function showDeletePopup(span, event, doc) {
+      pendingDeleteSpan = span
+      pendingDeleteDoc = doc
+      
+      // foliate-js uses wide horizontal layout with CSS transform for pagination
+      // event.clientX is in the full document space (can be 7000+)
+      // We need to calculate the visual position on screen
+      
+      const viewRect = view.getBoundingClientRect()
+      const viewWidth = viewRect.width
+      
+      // Calculate which "page" the click is on and the offset within that page
+      // The current visible page starts at an offset that's a multiple of viewWidth
+      const pageOffset = Math.floor(event.clientX / viewWidth) * viewWidth
+      const visualX = event.clientX - pageOffset
+      
+      let left = visualX + viewRect.left
+      let top = event.clientY + viewRect.top + 10
+      
+      // Keep within viewport
+      if (left + 100 > window.innerWidth) left = window.innerWidth - 110
+      if (left < 10) left = 10
+      if (top + 40 > window.innerHeight) top = event.clientY + viewRect.top - 40
+      
+      deletePopup.style.left = Math.max(10, left) + 'px'
+      deletePopup.style.top = Math.max(10, top) + 'px'
+      deletePopup.classList.add('show')
+    }
+
+    deletePopup.addEventListener('click', async () => {
+      if (!pendingDeleteSpan) return
+      
+      const text = pendingDeleteSpan.textContent
+      
+      // Remove from database
+      const deleted = await deleteHighlightByText(bookId, text)
+      console.log('Highlight deleted from DB:', deleted, text.substring(0, 30))
+      
+      // Remove from cache
+      if (cachedHighlights) {
+        cachedHighlights = cachedHighlights.filter(h => h.text !== text)
+      }
+      
+      // Remove visual highlight (unwrap the span)
+      const parent = pendingDeleteSpan.parentNode
+      while (pendingDeleteSpan.firstChild) {
+        parent.insertBefore(pendingDeleteSpan.firstChild, pendingDeleteSpan)
+      }
+      parent.removeChild(pendingDeleteSpan)
+      
+      hideDeletePopup()
+      debouncedSync()
+    })
+
+    // --- Highlight ---
+    async function applyHighlight(text, range, doc) {
+      // Apply visual highlight (wavy yellow underline)
+      applyHighlightStyle(range, doc)
+      
+      // Save to database
+      const highlight = {
+        bookId: bookId,
+        bookTitle: bookData.title || 'Untitled',
+        text: text
+      }
+      await saveHighlight(highlight)
+      
+      // Update cache so it persists across section navigation
+      if (cachedHighlights !== null) {
+        cachedHighlights.push({ ...highlight, addedAt: Date.now() })
+      }
+      
+      console.log('Highlight saved:', text.substring(0, 50) + '...')
+      debouncedSync()
+    }
+
+    async function translateWord(word) {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=en|zh`
+      try {
+        const res = await fetch(url)
+        const data = await res.json()
+        if (data.responseStatus === 200 && data.responseData?.translatedText) {
+          return data.responseData.translatedText
+        }
+        return null
+      } catch (e) {
+        console.error('Translation error:', e)
+        return null
+      }
+    }
+
+    async function showDict(word, x, y, bookTitle = '') {
+      if (!word || word.length > 50) return
+      word = word.trim().toLowerCase().replace(/[^\w\s'-]/g, '')
+      if (!word || !/[a-z]/i.test(word)) return
+
+      dictWord.textContent = word
+      dictPhonetic.textContent = ''
+      dictTranslation.innerHTML = '<span class="loading-text">翻译中...</span>'
+      
+      const popupWidth = 280, popupHeight = 100
+      let left = Math.min(x, window.innerWidth - popupWidth - 20)
+      let top = y + 20
+      if (top + popupHeight > window.innerHeight) top = y - popupHeight - 10
+      dictPopup.style.left = Math.max(10, left) + 'px'
+      dictPopup.style.top = Math.max(10, top) + 'px'
+      dictPopup.classList.add('show')
+
+      const translation = await translateWord(word)
+      if (translation) {
+        dictTranslation.textContent = translation
+        // Save word with translation to vocabulary
+        saveWord(word, translation, bookTitle)
+          .then(() => debouncedSync())
+          .catch(e => console.error('Failed to save word:', e))
+      } else {
+        dictTranslation.innerHTML = '<span class="error">无法翻译</span>'
+      }
+    }
+
+    // --- Navigation ---
+    document.getElementById('btn-back').addEventListener('click', () => {
+      location.href = 'index.html'
+    })
+    // Note: keyboard and click handlers are set up in the 'load' event listener above
+
+    // --- TOC ---
+    const tocOverlay = document.getElementById('toc-overlay')
+    const tocList = document.getElementById('toc-list')
+
+    document.getElementById('btn-toc').addEventListener('click', () => {
+      tocOverlay.classList.toggle('open')
+    })
+    document.getElementById('toc-backdrop').addEventListener('click', () => {
+      tocOverlay.classList.remove('open')
+    })
+
+    function renderTOC(items, depth = 0) {
+      if (!items) return
+      for (const item of items) {
+        const div = document.createElement('div')
+        const label = item.label || ''
+        // Detect chapter/part headings vs sub-items
+        const isChapter = /^(CHAPTER|PART|INTRODUCTION|CONCLUSION|APPENDIX|EPILOGUE|PROLOGUE)/i.test(label.trim())
+        const effectiveDepth = isChapter ? depth : depth + 1
+        div.className = `toc-item depth-${effectiveDepth}`
+        if (isChapter) div.style.fontWeight = '600'
+        div.textContent = label
+        div.addEventListener('click', () => {
+          view.goTo(item.href)
+          tocOverlay.classList.remove('open')
+        })
+        tocList.append(div)
+        if (item.subitems) renderTOC(item.subitems, depth + 1)
+      }
+    }
+    renderTOC(view.book.toc)
+
+    // Save last read timestamp
+    bookData.lastReadAt = Date.now()
+    saveBook(bookData)
+
+    // Hide popups when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dictPopup.contains(e.target)) hideDict()
+      if (!deletePopup.contains(e.target)) hideDeletePopup()
+    })
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideDict()
+        hideDeletePopup()
+      }
+    })
+
+    // --- Export Vocabulary ---
+    document.getElementById('btn-vocab').addEventListener('click', async () => {
+      const words = await getAllVocabulary()
+      if (!words || words.length === 0) {
+        alert('生词本是空的')
+        return
+      }
+      
+      // Sort by addedAt descending (newest first)
+      words.sort((a, b) => b.addedAt - a.addedAt)
+      
+      // Generate Markdown
+      const date = new Date().toISOString().split('T')[0]
+      let md = `# Vocabulary\n\nExported: ${date}\n\n`
+      for (const w of words) {
+        md += `- ${w.word}\n`
+      }
+      
+      // Trigger download
+      const blob = new Blob([md], { type: 'text/markdown' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `vocabulary-${date}.md`
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+
+    // --- Export Highlights ---
+    document.getElementById('btn-export-hl').addEventListener('click', async () => {
+      const highlights = await getAllHighlights()
+      if (!highlights || highlights.length === 0) {
+        alert('划线本是空的')
+        return
+      }
+      
+      // Sort by addedAt descending (newest first)
+      highlights.sort((a, b) => b.addedAt - a.addedAt)
+      
+      // Group by book
+      const byBook = {}
+      for (const hl of highlights) {
+        const book = hl.bookTitle || 'Unknown'
+        if (!byBook[book]) byBook[book] = []
+        byBook[book].push(hl)
+      }
+      
+      // Generate Markdown
+      const date = new Date().toISOString().split('T')[0]
+      let md = `# Highlights\n\nExported: ${date}\n\n`
+      for (const [book, hls] of Object.entries(byBook)) {
+        md += `## ${book}\n\n`
+        for (const hl of hls) {
+          md += `> ${hl.text}\n\n`
+        }
+      }
+      
+      // Trigger download
+      const blob = new Blob([md], { type: 'text/markdown' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `highlights-${date}.md`
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+
+    // --- Translation (display only - translation triggered from index.html) ---
+    console.log('📚 Setting up translation display...')
+    const btnTranslate = document.getElementById('btn-translate')
+    
+    // Button click handler - direct addEventListener (most reliable)
+    if (btnTranslate) {
+      btnTranslate.addEventListener('click', (e) => {
+        e.stopPropagation() // Prevent any parent handlers from interfering
+        console.log('🌐 Button clicked! disabled:', btnTranslate.disabled, 'showTranslations:', showTranslations)
+        if (btnTranslate.disabled) return
+        toggleTranslations()
+      })
+      console.log('📚 Translation button listener attached')
+    } else {
+      console.error('❌ btn-translate not found!')
+    }
+    
+    async function loadTranslationCache() {
+      if (translationCache !== null) return translationCache
+      translationCache = await getBookTranslations(bookId)
+      console.log(`📚 Loaded ${Object.keys(translationCache).length} translations for this book`)
+      return translationCache
+    }
+    
+    // Inject or remove translations in document
+    function injectTranslations(doc) {
+      if (!showTranslations || !translationCache) return
+      
+      const paragraphs = doc.querySelectorAll('p:not(.zh-translation)')
+      let injected = 0
+      
+      for (const p of paragraphs) {
+        const text = p.textContent?.trim()
+        if (!text || text.length < 10) continue
+        if (p.nextElementSibling?.classList?.contains('zh-translation')) continue
+        
+        const hash = hashText(text)
+        const translation = translationCache[hash]
+        if (translation) {
+          const zhP = doc.createElement('p')
+          zhP.className = 'zh-translation'
+          zhP.textContent = translation
+          // Dark mode: #586e75 (more muted than English #839496), Light mode: #93a1a1
+          const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+          const zhColor = isDark ? '#586e75' : '#93a1a1'
+          zhP.style.cssText = `color: ${zhColor}; font-size: 0.85em; margin-top: -0.5em; margin-bottom: 1em; line-height: 1.6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif; font-weight: 400;`
+          p.parentNode.insertBefore(zhP, p.nextSibling)
+          injected++
+        }
+      }
+      if (injected > 0) console.log(`Injected ${injected} translations`)
+    }
+    
+    function removeTranslations(doc) {
+      const zhParagraphs = doc.querySelectorAll('.zh-translation')
+      zhParagraphs.forEach(p => p.remove())
+      console.log(`Removed ${zhParagraphs.length} translations`)
+    }
+    
+    // Toggle translation visibility
+    function toggleTranslations() {
+      const btn = document.getElementById('btn-translate')
+      showTranslations = !showTranslations
+      localStorage.setItem(`showTranslations_${bookId}`, showTranslations)
+      if (btn) {
+        btn.classList.toggle('active', showTranslations)
+        btn.title = showTranslations ? '隐藏翻译' : '显示翻译'
+      }
+      
+      if (currentDocRef) {
+        if (showTranslations) {
+          injectTranslations(currentDocRef)
+        } else {
+          removeTranslations(currentDocRef)
+        }
+      }
+    }
+    
+    // Update button state based on translation availability
+    function updateTranslateButton() {
+      const btn = document.getElementById('btn-translate')
+      if (!btn) return
+      const hasTranslations = translationCache && Object.keys(translationCache).length > 0
+      console.log('📚 updateTranslateButton:', { hasTranslations, count: translationCache ? Object.keys(translationCache).length : 0 })
+      btn.disabled = !hasTranslations
+      btn.classList.toggle('active', showTranslations && hasTranslations)
+      if (hasTranslations) {
+        btn.textContent = '🌐'
+        btn.title = showTranslations ? '隐藏翻译' : '显示翻译'
+      } else {
+        btn.textContent = '🌐'
+        btn.title = '无翻译 (从书架上传书籍以触发翻译)'
+      }
+    }
+    
+    console.log('✅ Reader fully initialized')
+    
+    // Final verification that button is working
+    console.log('📚 Button state:', {
+      exists: !!btnTranslate,
+      disabled: btnTranslate?.disabled,
+      text: btnTranslate?.textContent
+    })
+  </script>
+</body>
+</html>
