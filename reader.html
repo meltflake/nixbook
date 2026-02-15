@@ -692,6 +692,13 @@
         
         // Quick tap (< 300ms, barely moved, no text selected) → toggle toolbar
         if (elapsed < 300 && !moved) {
+          if (dictPopup.classList.contains('show')) {
+            hideDict()
+            touchStartX = null
+            touchStartY = null
+            touchStartTime = null
+            return
+          }
           const sel = doc.getSelection()
           if (!sel || sel.toString().trim().length === 0) {
             if (!e.target.closest?.('a[href]')) toggleBars()
@@ -699,6 +706,7 @@
         }
         // Horizontal swipe (> 80px) → page turn
         else if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 80) {
+          hideDict()
           const sel = doc.getSelection()
           if (!sel || sel.toString().trim().length === 0) {
             if (dx > 0) view.goLeft()
@@ -845,6 +853,7 @@
     const chapterLabel = document.getElementById('chapter-label')
 
     view.addEventListener('relocate', ({ detail }) => {
+      hideDict()
       const fraction = detail.fraction || 0
       slider.value = fraction
       progressText.textContent = `${Math.round(fraction * 100)}%`
