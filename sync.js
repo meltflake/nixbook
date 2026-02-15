@@ -23,12 +23,20 @@ export async function exportLocalData() {
     paragraphCount: b.paragraphCount || null,
   }))
   
+  // Include tombstones so deletions propagate across devices
+  let deletedHighlights = []
+  let deletedVocab = []
+  try { deletedHighlights = JSON.parse(localStorage.getItem('highlight-tombstones') || '[]') } catch {}
+  try { deletedVocab = JSON.parse(localStorage.getItem('vocab-tombstones') || '[]') } catch {}
+
   return {
     version: 1,
     exportedAt: Date.now(),
     books: booksMetadata,
     vocabulary,
     highlights,
+    deletedHighlights,
+    deletedVocab,
   }
 }
 
@@ -69,9 +77,9 @@ export async function syncWithDropbox(progressCallback) {
     progressCallback?.('正在上传到云端...')
     await uploadData(freshLocalData)
     
-    // Clean up old tombstones (keep last 7 days only)
+    // Clean up old tombstones (keep last 30 days for multi-device propagation)
     try {
-      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
       for (const key of ['highlight-tombstones', 'vocab-tombstones']) {
         const ts = JSON.parse(localStorage.getItem(key) || '[]')
         localStorage.setItem(key, JSON.stringify(ts.filter(t => (t.deletedAt || 0) > cutoff)))
@@ -100,6 +108,22 @@ export async function syncWithDropbox(progressCallback) {
 }
 
 // Merge local and remote data
+// Merge tombstone arrays from two sources, deduplicate by key
+function mergeTombstones(remote = [], local = [], keyType) {
+  const map = new Map()
+  for (const t of [...remote, ...local]) {
+    let key
+    if (keyType === 'word') key = t.word
+    else key = `${t.bookId}:${t.text}`
+    // Keep the one with the latest deletedAt
+    const existing = map.get(key)
+    if (!existing || (t.deletedAt || 0) > (existing.deletedAt || 0)) {
+      map.set(key, t)
+    }
+  }
+  return Array.from(map.values())
+}
+
 function mergeData(local, remote) {
   if (!remote) return local
   
@@ -130,10 +154,18 @@ function mergeData(local, remote) {
   }
   merged.books = Array.from(booksMap.values())
   
+  // Merge deletion tombstones from both sides (union, deduplicated)
+  const allDeletedHighlights = mergeTombstones(remote.deletedHighlights, local.deletedHighlights, 'bookId:text')
+  const allDeletedVocab = mergeTombstones(remote.deletedVocab, local.deletedVocab, 'word')
+  merged.deletedHighlights = allDeletedHighlights
+  merged.deletedVocab = allDeletedVocab
+  
+  // Persist merged tombstones to localStorage so this device knows about remote deletes too
+  try { localStorage.setItem('highlight-tombstones', JSON.stringify(allDeletedHighlights)) } catch {}
+  try { localStorage.setItem('vocab-tombstones', JSON.stringify(allDeletedVocab)) } catch {}
+  
   // Merge vocabulary (by word) — respect tombstones
-  let vocabTombstones = []
-  try { vocabTombstones = JSON.parse(localStorage.getItem('vocab-tombstones') || '[]') } catch {}
-  const vocabTombstoneKeys = new Set(vocabTombstones.map(t => t.word))
+  const vocabTombstoneKeys = new Set(allDeletedVocab.map(t => t.word))
   
   const vocabMap = new Map()
   for (const word of (remote.vocabulary || [])) {
@@ -150,16 +182,14 @@ function mergeData(local, remote) {
   }
   merged.vocabulary = Array.from(vocabMap.values())
   
-  // Merge highlights — respect tombstones (deleted highlights should stay deleted)
-  let tombstones = []
-  try { tombstones = JSON.parse(localStorage.getItem('highlight-tombstones') || '[]') } catch {}
-  const tombstoneKeys = new Set(tombstones.map(t => `${t.bookId}:${t.text}`))
+  // Merge highlights — respect tombstones from both devices
+  const hlTombstoneKeys = new Set(allDeletedHighlights.map(t => `${t.bookId}:${t.text}`))
   
   const highlightSet = new Set()
   const highlights = []
   for (const hl of [...(remote.highlights || []), ...(local.highlights || [])]) {
     const key = `${hl.bookId}:${hl.text}`
-    if (tombstoneKeys.has(key)) continue  // Skip deleted highlights
+    if (hlTombstoneKeys.has(key)) continue  // Skip deleted highlights
     if (!highlightSet.has(key)) { highlightSet.add(key); highlights.push(hl) }
   }
   merged.highlights = highlights
