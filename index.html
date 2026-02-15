@@ -279,7 +279,8 @@
     }
 
     async function startBookTranslation(bookId, file) {
-      if (activeTranslations.has(bookId)) return
+      console.log('📚 startBookTranslation called:', bookId, 'file:', file ? `${file.constructor?.name} ${file.size}b` : 'null', 'active:', activeTranslations.has(bookId))
+      if (activeTranslations.has(bookId)) { console.warn('📚 Already active, skipping'); return }
       activeTranslations.add(bookId)
       if (!file || !(file instanceof Blob)) {
         console.error('Translation: no valid file for', bookId, typeof file, file)
@@ -310,8 +311,13 @@
           }
           updateQueuedTask(bookId, { status: 'translating', paragraphs: allParagraphs, totalCount: allParagraphs.length, startedAt: Date.now() })
           saveParagraphCount(bookId, allParagraphs.length)
+          console.log('📚 Parsed paragraphs:', allParagraphs.length)
+        } else {
+          console.log('📚 Using cached paragraphs:', allParagraphs.length)
         }
+        console.log('📚 Existing translations:', existingSet.size)
         const remaining = allParagraphs.filter(p => !existingSet.has(p.hash))
+        console.log('📚 Remaining to translate:', remaining.length, '/', allParagraphs.length)
         if (remaining.length === 0) {
           markTranslationComplete(bookId, Object.keys(await getBookTranslations(bookId)).length)
           translationStates.set(bookId, { status: 'done', message: '✓ 已完成' })
