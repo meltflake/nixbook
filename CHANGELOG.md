@@ -331,3 +331,14 @@
   - Console logs: `⛔ BLOCKED` for rejected saves, `✅ Init confirmed` when position matches
 - **Also fixed**: `view.init()` failure no longer clears `bookData.lastLocation` — the known-good CFI is preserved so next visit can retry
 - **Key principle**: Never overwrite known-good progress with a position that is BEHIND it, especially during the first few seconds of reader initialization
+
+#### Batch 23: Tombstone mechanism for deleted highlights/vocabulary (2026-02-15)
+- **Bug**: Deleted highlights reappear after sync — delete is visually removed but next sync merges the remote copy back
+- **Root cause**: `mergeData()` does a union of local + remote highlights. After local delete, remote still has the entry → merge brings it back → `applyMergedData()` writes it to IndexedDB
+- **Fix — Tombstone pattern**:
+  - When a highlight is deleted in `reader.html`, a tombstone record `{ bookId, text, deletedAt }` is saved to `localStorage` key `highlight-tombstones`
+  - When a vocabulary word is deleted in `flashcards.html`, a tombstone `{ word, deletedAt }` is saved to `vocab-tombstones`
+  - `mergeData()` in `sync.js` reads tombstones and **skips** any highlight/vocab that matches a tombstone key
+  - After successful upload, tombstones older than 7 days are pruned
+- **Same fix applied to vocabulary**: deleting a word in the vocabulary page also creates a tombstone
+- **Why localStorage and not IndexedDB**: Tombstones are transient sync metadata, not domain data. localStorage is simpler and survives the `hlStore.clear()` in `applyMergedData`
