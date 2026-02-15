@@ -310,7 +310,9 @@
             } catch {}
           }
           updateQueuedTask(bookId, { status: 'translating', paragraphs: allParagraphs, totalCount: allParagraphs.length, startedAt: Date.now() })
-          saveParagraphCount(bookId, allParagraphs.length)
+          // Save unique hash count (not total paragraphs, since duplicates share the same hash)
+          const uniqueHashes = new Set(allParagraphs.map(p => p.hash)).size
+          saveParagraphCount(bookId, uniqueHashes)
           console.log('📚 Parsed paragraphs:', allParagraphs.length)
         } else {
           console.log('📚 Using cached paragraphs:', allParagraphs.length)
