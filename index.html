@@ -281,6 +281,33 @@
     async function startBookTranslation(bookId, file) {
       console.log('📚 startBookTranslation called:', bookId, 'file:', file ? `${file.constructor?.name} ${file.size}b` : 'null', 'active:', activeTranslations.has(bookId))
       if (activeTranslations.has(bookId)) { console.warn('📚 Already active, skipping'); return }
+      // Cross-tab lock: only one tab can translate a given book at a time
+      if (navigator.locks) {
+        const lockName = `nixbook-translate-${bookId}`
+        let acquired = false
+        try {
+          await navigator.locks.request(lockName, { ifAvailable: true }, async lock => {
+            if (!lock) {
+              console.warn(`📚 Another tab is already translating ${bookId}, skipping`)
+              translationStates.set(bookId, { status: 'translating', message: '其他标签页翻译中...' })
+              updateBookBadge(bookId)
+              return
+            }
+            acquired = true
+            await doStartBookTranslation(bookId, file)
+          })
+        } catch (e) {
+          console.error('📚 Lock error, falling back:', e)
+          await doStartBookTranslation(bookId, file)
+        }
+        if (!acquired) return
+      } else {
+        await doStartBookTranslation(bookId, file)
+      }
+    }
+
+    async function doStartBookTranslation(bookId, file) {
+      if (activeTranslations.has(bookId)) return
       activeTranslations.add(bookId)
       if (!file || !(file instanceof Blob)) {
         console.error('Translation: no valid file for', bookId, typeof file, file)
