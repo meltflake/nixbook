@@ -313,9 +313,9 @@
           // Save unique hash count to both localStorage AND book metadata (for cross-device sync)
           const uniqueHashes = new Set(allParagraphs.map(p => p.hash)).size
           saveParagraphCount(bookId, uniqueHashes)
-          // Persist to IndexedDB book record so it syncs via Dropbox
-          const bookRecord = await getBook(bookId)
-          if (bookRecord) { bookRecord.paragraphCount = uniqueHashes; await saveBook(bookRecord) }
+          // Persist to IndexedDB book record so it syncs via Dropbox (re-read fresh to avoid stale writes)
+          const freshRecord = await getBook(bookId)
+          if (freshRecord) { freshRecord.paragraphCount = uniqueHashes; await saveBook(freshRecord) }
           console.log('📚 Parsed paragraphs:', allParagraphs.length)
         } else {
           console.log('📚 Using cached paragraphs:', allParagraphs.length)
@@ -589,7 +589,8 @@
       for (const book of books) {
         if (book.author && typeof book.author === 'object') {
           book.author = formatAuthor(book.author)
-          await saveBook(book)
+          const fresh = await getBook(book.id)
+          if (fresh) { fresh.author = book.author; await saveBook(fresh) }
         }
       }
 
@@ -609,10 +610,12 @@
         
         // Extract cover if missing but file exists (async, updates in background)
         if (!book.coverBlob && book.file) {
-          extractCoverOnly(book.file).then(cover => {
+          const bookIdForCover = book.id
+          extractCoverOnly(book.file).then(async cover => {
             if (cover) {
-              book.coverBlob = cover
-              saveBook(book)
+              // CRITICAL: re-read fresh record from IndexedDB to avoid overwriting newer progress
+              const fresh = await getBook(bookIdForCover)
+              if (fresh) { fresh.coverBlob = cover; await saveBook(fresh) }
               const img = card.querySelector('.book-cover img')
               if (img) { img.src = URL.createObjectURL(cover) }
               else {
@@ -639,8 +642,8 @@
         
         // Backfill: if localStorage has count but book record doesn't, save to IndexedDB for future sync
         if (!book.paragraphCount && totalParas) {
-          book.paragraphCount = totalParas
-          saveBook(book)
+          // Re-read fresh record to avoid overwriting newer progress
+          getBook(book.id).then(fresh => { if (fresh && !fresh.paragraphCount) { fresh.paragraphCount = totalParas; saveBook(fresh) } })
         }
         
         let badgeHTML = ''
@@ -659,11 +662,13 @@
           // Has translations but unknown total — need to count paragraphs to check completion
           translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
           // Count paragraphs in background to determine if complete
-          countParagraphs(book.file).then(count => {
+          const bookIdForCount = book.id
+          countParagraphs(book.file).then(async count => {
             if (count) {
-              book.paragraphCount = count
-              saveBook(book)
-              saveParagraphCount(book.id, count)
+              // Re-read fresh record to avoid overwriting newer progress
+              const fresh = await getBook(bookIdForCount)
+              if (fresh) { fresh.paragraphCount = count; await saveBook(fresh) }
+              saveParagraphCount(bookIdForCount, count)
               // Update the UI
               const infoEl = card.querySelector('.book-translate-info')
               const badgeEl = card.querySelector('.book-translate-badge')

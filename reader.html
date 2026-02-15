@@ -244,6 +244,7 @@
 
     // Load book from IndexedDB (local cache)
     let bookData = await getBook(bookId)
+    console.log('📚 Loaded from IndexedDB:', bookData ? `progress=${Math.round((bookData.progress||0)*100)}% lastLocation=${bookData.lastLocation?.substring(0,50) || 'null'} lastReadAt=${bookData.lastReadAt}` : 'NOT FOUND')
     
     // If not in local cache, try to download from Dropbox
     if (!bookData || !bookData.file) {
@@ -682,14 +683,14 @@
     document.title = title
 
     // Navigate to saved position or start
-    console.log('📚 Initializing view position...')
+    console.log('📚 Initializing view position...', bookData.lastLocation ? `lastLocation=${bookData.lastLocation.substring(0,60)}` : 'NO lastLocation → showTextStart')
     try {
       if (bookData.lastLocation) {
         await view.init({ lastLocation: bookData.lastLocation })
       } else {
         await view.init({ showTextStart: true })
       }
-      console.log('📚 View position initialized')
+      console.log('📚 View position initialized OK')
     } catch (e) {
       console.warn('⚠️ Failed to restore position:', e.message)
       // Clear corrupted location and retry once
