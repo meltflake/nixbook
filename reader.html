@@ -68,7 +68,7 @@
     .toc-backdrop { flex: 1; background: rgba(0,0,0,0.5); }
     .toc-panel {
       width: 300px; max-width: 80vw; background: var(--bg-bar); overflow-y: auto; padding: 16px;
-      box-shadow: 2px 0 12px rgba(0,0,0,0.2);
+      box-shadow: -2px 0 12px rgba(0,0,0,0.2);
     }
     .toc-panel h3 { margin-bottom: 12px; font-size: 15px; font-weight: 600; color: var(--text); }
     .toc-item {
@@ -136,11 +136,11 @@
   </div>
 
   <div class="toc-overlay" id="toc-overlay">
+    <div class="toc-backdrop" id="toc-backdrop"></div>
     <div class="toc-panel" id="toc-panel">
       <h3>Table of Contents</h3>
       <div id="toc-list"></div>
     </div>
-    <div class="toc-backdrop" id="toc-backdrop"></div>
   </div>
 
   <div class="dict-popup" id="dict-popup">
