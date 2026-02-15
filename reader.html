@@ -606,8 +606,11 @@
         const isWord = !text.includes(' ') && text.length < 30 && /^[a-zA-Z'-]+$/.test(text)
         
         if (isWord) {
+          // Clear selection first to dismiss browser's native toolbar
+          sel.removeAllRanges()
           showDict(text, x, y, bookData.title)
         } else if (text.length < 2000) {
+          sel.removeAllRanges()
           hideDict()
           applyHighlight(text, range, doc)
         }
