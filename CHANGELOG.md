@@ -203,3 +203,17 @@
 - Restored native text selection (removed `user-select: none`)
 - `sel.removeAllRanges()` after handling to dismiss browser toolbar
 - Extract cover and metadata on book add (not just on first read)
+
+#### Batch 11: Progress sync robustness (2026-02-15)
+- **Bug**: Progress reverts to old position after going back and re-entering reader
+- **Root causes identified**:
+  1. `applyMergedData` unconditionally overwrote local IndexedDB with merged data, even if local was updated between merge computation and apply
+  2. `pushToDropbox` from reader.html was fire-and-forget — if page navigated before fetch completed, cloud stayed stale
+  3. Back button (`location.href = 'index.html'`) didn't wait for save to complete
+- **Fixes**:
+  1. `applyMergedData` now re-checks local `lastReadAt` before overwriting — skips if local is newer than merged
+  2. `syncWithDropbox` re-reads fresh local data AFTER apply, uploads that (not the merge result)
+  3. Back button now `await`s pending save + does a final `saveBook` before navigating
+  4. Added `visibilitychange` and `pagehide` handlers to save progress when user swipes back or switches apps
+  5. Added `📚` prefixed logging to trace sync decisions
+- **Key principle**: IndexedDB is source of truth. Cloud is a mirror. Never let cloud overwrite local unless cloud is strictly newer.
