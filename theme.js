@@ -10,9 +10,12 @@ export function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme)
 }
 
+const THEME_CYCLE = ['light', 'dark', 'eink']
+
 export function toggleTheme() {
   const current = getTheme()
-  const next = current === 'light' ? 'dark' : 'light'
+  const idx = THEME_CYCLE.indexOf(current)
+  const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]
   setTheme(next)
   return next
 }

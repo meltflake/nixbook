@@ -338,8 +338,9 @@
 
     // ========== 主题 ==========
     const themeBtn = document.getElementById('theme-toggle')
-    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
-    themeBtn.addEventListener('click', () => { themeBtn.textContent = toggleTheme() === 'dark' ? '☀️' : '🌙' })
+    const themeIcons = { light: '🌙', dark: '📖', eink: '☀️' }
+    themeBtn.textContent = themeIcons[getTheme()] || '🌙'
+    themeBtn.addEventListener('click', () => { const t = toggleTheme(); themeBtn.textContent = themeIcons[t] || '🌙' })
 
     // ========== DOM ==========
     const cloudIcon = document.getElementById('cloud-icon')

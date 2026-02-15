@@ -72,6 +72,28 @@ code, pre, .mono {
   font-family: var(--font-mono);
 }
 
+/* E-ink theme */
+[data-theme="eink"] {
+  --bg:            #ffffff;
+  --bg-card:       #f5f5f5;
+  --bg-bar:        #f0f0f0;
+  --border:        #cccccc;
+  --text:          #000000;
+  --text-secondary: #555555;
+  --text-muted:    #777777;
+  --hover:         #e8e8e8;
+  --accent:        #333333;
+  --success:       #333333;
+  --danger:        #000000;
+  --highlight:     #cccccc;
+  --highlight-border: #999999;
+}
+
+[data-theme="eink"] * {
+  transition: none !important;
+  animation: none !important;
+}
+
 /* Theme toggle button */
 .theme-toggle {
   background: none;

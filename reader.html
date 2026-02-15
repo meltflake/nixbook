@@ -188,33 +188,39 @@
     
     // Theme toggle
     const themeBtn = document.getElementById('btn-theme')
-    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
+    const themeIcons = { light: '🌙', dark: '📖', eink: '☀️' }
+    themeBtn.textContent = themeIcons[getTheme()] || '🌙'
     themeBtn.addEventListener('click', () => {
       const newTheme = toggleTheme()
-      themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙'
+      themeBtn.textContent = themeIcons[newTheme] || '🌙'
       // Update reader content styles
       updateReaderTheme(newTheme)
     })
 
+    function getThemeColors(theme) {
+      if (theme === 'eink') return { bg: '#ffffff', text: '#000000', link: '#333333', linkHover: '#000000', zhColor: '#555555' }
+      if (theme === 'dark') return { bg: '#002b36', text: '#839496', link: '#859900', linkHover: '#b58900', zhColor: '#586e75' }
+      return { bg: '#fdf6e3', text: '#657b83', link: '#859900', linkHover: '#b58900', zhColor: '#93a1a1' }
+    }
+
     function updateReaderTheme(theme) {
-      // Update foliate-view styles for theme
       if (window.currentView) {
-        const isDark = theme === 'dark'
+        const c = getThemeColors(theme)
         window.currentView.renderer.setStyles?.(`
           @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
           @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=swap');
           @namespace epub "http://www.idpf.org/2007/ops";
           html, body { 
-            background: ${isDark ? '#002b36' : '#fdf6e3'} !important; 
-            color: ${isDark ? '#839496' : '#657b83'} !important; 
+            background: ${c.bg} !important; 
+            color: ${c.text} !important; 
             font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', -apple-system, sans-serif !important;
             padding: 20px !important;
           }
           p, li, blockquote, dd { line-height: 1.8; }
           p { margin-bottom: 1.2em !important; text-indent: 0 !important; }
-          a, a:link, a:visited { color: ${isDark ? '#859900' : '#859900'} !important; text-decoration: underline; }
-          a:hover { color: ${isDark ? '#b58900' : '#b58900'} !important; }
-          .zh-translation { font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif !important; font-weight: 400; color: ${isDark ? '#586e75' : '#93a1a1'}; }
+          a, a:link, a:visited { color: ${c.link} !important; text-decoration: underline; }
+          a:hover { color: ${c.linkHover} !important; }
+          .zh-translation { font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif !important; font-weight: 400; color: ${c.zhColor}; }
         `)
       }
     }
@@ -645,23 +651,7 @@
     window.currentView = view
     
     // Apply initial theme to reader content
-    const isDark = getTheme() === 'dark'
-    view.renderer.setStyles?.(`
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=swap');
-      @namespace epub "http://www.idpf.org/2007/ops";
-      html, body { 
-        background: ${isDark ? '#002b36' : '#fdf6e3'} !important; 
-        color: ${isDark ? '#839496' : '#657b83'} !important; 
-        font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', -apple-system, sans-serif !important;
-        padding: 20px !important;
-      }
-      p, li, blockquote, dd { line-height: 1.8; }
-      p { margin-bottom: 1.2em !important; text-indent: 0 !important; }
-      a, a:link, a:visited { color: ${isDark ? '#859900' : '#859900'} !important; text-decoration: underline; }
-      a:hover { color: ${isDark ? '#b58900' : '#b58900'} !important; }
-      .zh-translation { font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif !important; font-weight: 400; color: ${isDark ? '#586e75' : '#93a1a1'}; }
-    `)
+    updateReaderTheme(getTheme())
 
     // Update metadata from the parsed book
     const meta = view.book.metadata || {}
