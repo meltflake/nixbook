@@ -4,313 +4,236 @@
   <meta charset="utf-8">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>背单词</title>
+  <title>单词本</title>
   <link rel="stylesheet" href="theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      min-height: 100vh;
-      background: var(--bg);
-      color: var(--text);
-      display: flex;
-      flex-direction: column;
-    }
+    body { min-height: 100vh; background: var(--bg); color: var(--text); }
 
     .header {
-      display: flex;
-      align-items: center;
-      padding: 12px 16px;
-      background: var(--bg-card);
-      border-bottom: 1px solid var(--border);
-      gap: 12px;
+      display: flex; align-items: center; padding: 12px 16px;
+      background: var(--bg-card); border-bottom: 1px solid var(--border); gap: 12px;
+      position: sticky; top: 0; z-index: 10;
     }
+    .header a { color: var(--text); text-decoration: none; font-size: 20px; }
+    .header h1 { flex: 1; font-size: 18px; font-weight: 600; }
+    .header .stats-text { font-size: 13px; color: var(--text-secondary); }
+    .header button { background: none; border: none; cursor: pointer; font-size: 18px; color: var(--text); padding: 4px 8px; border-radius: 4px; }
+    .header button:hover { background: var(--hover); }
 
-    .header a {
-      color: var(--text);
-      text-decoration: none;
-      font-size: 20px;
-    }
+    .feed { max-width: 600px; margin: 0 auto; padding: 12px 16px; }
 
-    .header h1 {
-      flex: 1;
-      font-size: 18px;
-      font-weight: 600;
+    /* Review card embedded in feed */
+    .review-card {
+      background: var(--bg-card); border: 1px solid var(--accent); border-radius: 12px;
+      padding: 24px; margin-bottom: 16px; text-align: center;
     }
+    .review-card .label { font-size: 12px; color: var(--accent); margin-bottom: 12px; font-weight: 500; }
+    .review-card .word { font-size: 28px; font-weight: 600; color: var(--accent); }
+    .review-card .phonetic { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+    .review-card .answer { font-size: 18px; color: var(--text); margin-top: 16px; display: none; }
+    .review-card.revealed .answer { display: block; }
+    .review-card .tap-hint { font-size: 13px; color: var(--text-secondary); margin-top: 12px; }
+    .review-card.revealed .tap-hint { display: none; }
+    .review-buttons { display: none; gap: 10px; margin-top: 16px; }
+    .review-card.revealed .review-buttons { display: flex; }
+    .review-buttons button {
+      flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 14px;
+      font-weight: 500; cursor: pointer;
+    }
+    .review-buttons button:active { transform: scale(0.95); }
+    .btn-forgot { background: var(--danger, #dc2626); color: white; }
+    .btn-hard { background: var(--border); color: var(--text); }
+    .btn-good { background: var(--success, #16a34a); color: white; }
 
-    .progress-info {
-      font-size: 14px;
-      color: var(--text-secondary);
+    /* Word list items */
+    .word-item {
+      display: flex; align-items: flex-start; padding: 14px 16px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+      margin-bottom: 8px; gap: 12px;
     }
+    .word-item .word-info { flex: 1; min-width: 0; }
+    .word-item .word-text { font-size: 16px; font-weight: 600; color: var(--accent); }
+    .word-item .word-phonetic { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .word-item .word-trans { font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.4; }
+    .word-item .word-meta { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+    .word-item .delete-btn {
+      background: none; border: none; cursor: pointer; font-size: 16px;
+      color: var(--text-secondary); padding: 4px 8px; border-radius: 4px; flex-shrink: 0;
+      opacity: 0.5; transition: opacity 0.15s;
+    }
+    .word-item .delete-btn:hover { opacity: 1; color: var(--danger, #dc2626); }
 
-    .container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .empty-state h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+    .empty-state a { color: var(--accent); text-decoration: none; }
 
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 40px;
-      width: 100%;
-      max-width: 400px;
-      text-align: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      min-height: 250px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      cursor: pointer;
-      user-select: none;
-      transition: transform 0.1s;
-    }
-
-    .card:active {
-      transform: scale(0.98);
-    }
-
-    .word {
-      font-size: 32px;
-      font-weight: 600;
-      color: var(--accent);
-      margin-bottom: 20px;
-    }
-
-    .translation {
-      font-size: 24px;
-      color: var(--text);
-      display: none;
-    }
-
-    .card.revealed .translation {
-      display: block;
-    }
-
-    .hint {
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-top: 20px;
-    }
-
-    .card.revealed .hint {
-      display: none;
-    }
-
-    .buttons {
-      display: none;
-      gap: 16px;
-      margin-top: 30px;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .buttons.show {
-      display: flex;
-    }
-
-    .buttons button {
-      flex: 1;
-      padding: 16px 24px;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: transform 0.1s, opacity 0.1s;
-    }
-
-    .buttons button:active {
-      transform: scale(0.95);
-    }
-
-    .btn-forgot {
-      background: var(--danger);
-      color: white;
-    }
-
-    .btn-hard {
-      background: var(--border);
-      color: var(--text);
-    }
-
-    .btn-good {
-      background: var(--success);
-      color: white;
-    }
-
-    .empty-state {
-      text-align: center;
-      color: var(--text-secondary);
-    }
-
-    .empty-state h2 {
-      font-size: 24px;
-      margin-bottom: 12px;
-      color: var(--text);
-    }
-
-    .empty-state p {
-      font-size: 16px;
-      margin-bottom: 24px;
-    }
-
-    .empty-state a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    .stats {
-      margin-top: 40px;
-      padding: 20px;
-      background: var(--bg-card);
-      border-radius: 12px;
-      text-align: left;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .stats h3 {
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-bottom: 12px;
-    }
-
-    .stat-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .stat-row:last-child {
-      border-bottom: none;
-    }
+    .section-title { font-size: 13px; color: var(--text-secondary); margin: 16px 0 8px; font-weight: 500; }
   </style>
 </head>
 <body>
   <div class="header">
     <a href="index.html">←</a>
-    <h1>背单词</h1>
-    <span class="progress-info" id="progress-info"></span>
-    <button class="theme-toggle" id="theme-toggle" title="切换主题">🌙</button>
+    <h1>单词本</h1>
+    <span class="stats-text" id="stats-text"></span>
+    <button id="theme-toggle" title="切换主题">🌙</button>
   </div>
-
-  <div class="container" id="container">
-    <!-- Content injected by JS -->
-  </div>
+  <div class="feed" id="feed"></div>
 
   <script type="module">
-    import { getWordsForReview, updateWordReview, getAllVocabulary } from './db.js'
+    import { getAllVocabulary, getWordsForReview, updateWordReview, deleteWord } from './db.js'
     import { toggleTheme, getTheme } from './theme.js'
     import { isDropboxConfigured, isLoggedIn } from './dropbox.js'
     import { pushToDropbox } from './sync.js'
-    
-    // Debounced sync
+
+    const themeBtn = document.getElementById('theme-toggle')
+    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
+    themeBtn.addEventListener('click', () => {
+      const t = toggleTheme()
+      themeBtn.textContent = t === 'dark' ? '☀️' : '🌙'
+    })
+
     let syncTimeout = null
     function debouncedSync() {
       if (!isDropboxConfigured() || !isLoggedIn()) return
       if (syncTimeout) clearTimeout(syncTimeout)
-      syncTimeout = setTimeout(() => {
-        pushToDropbox().catch(e => console.error('Auto sync failed:', e))
-      }, 3000)
+      syncTimeout = setTimeout(() => pushToDropbox().catch(() => {}), 3000)
     }
 
-    // Theme toggle
-    const themeBtn = document.getElementById('theme-toggle')
-    themeBtn.textContent = getTheme() === 'dark' ? '☀️' : '🌙'
-    themeBtn.addEventListener('click', () => {
-      const newTheme = toggleTheme()
-      themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙'
-    })
+    const feed = document.getElementById('feed')
+    const statsText = document.getElementById('stats-text')
+    let reviewCards = []
+    let reviewIndex = 0
 
-    const container = document.getElementById('container')
-    const progressInfo = document.getElementById('progress-info')
-
-    let cards = []
-    let currentIndex = 0
-
-    async function init() {
-      cards = await getWordsForReview(50)
-      
-      if (cards.length === 0) {
-        showEmptyState()
-      } else {
-        showCard()
-      }
-    }
-
-    async function showEmptyState() {
+    async function render() {
       const allWords = await getAllVocabulary()
-      const total = allWords.length
-      const withTranslation = allWords.filter(w => w.translation).length
-      
-      container.innerHTML = `
-        <div class="empty-state">
-          <h2>🎉 今天复习完成！</h2>
-          <p>没有需要复习的单词了</p>
-          <a href="index.html">返回书架继续阅读</a>
-          
-          <div class="stats">
-            <h3>单词统计</h3>
-            <div class="stat-row">
-              <span>总单词数</span>
-              <span>${total}</span>
-            </div>
-            <div class="stat-row">
-              <span>有翻译</span>
-              <span>${withTranslation}</span>
-            </div>
-          </div>
-        </div>
-      `
-    }
+      reviewCards = await getWordsForReview(50)
+      reviewIndex = 0
 
-    function showCard() {
-      if (currentIndex >= cards.length) {
-        showEmptyState()
+      statsText.textContent = `${allWords.length} 词`
+
+      if (allWords.length === 0) {
+        feed.innerHTML = `<div class="empty-state"><h2>还没有单词</h2><p>在阅读时选中英文单词即可自动添加</p><a href="index.html">← 返回书架</a></div>`
         return
       }
 
-      const card = cards[currentIndex]
-      progressInfo.textContent = `${currentIndex + 1} / ${cards.length}`
+      feed.innerHTML = ''
 
-      container.innerHTML = `
-        <div class="card" id="card">
-          <div class="word">${card.word}</div>
-          <div class="translation">${card.translation || '(无翻译)'}</div>
-          <div class="hint">点击显示答案</div>
-        </div>
-        <div class="buttons" id="buttons">
-          <button class="btn-forgot" data-quality="1">忘了</button>
-          <button class="btn-hard" data-quality="3">想起来了</button>
-          <button class="btn-good" data-quality="5">秒答</button>
-        </div>
-      `
+      // Insert first review card if available
+      if (reviewCards.length > 0) {
+        insertReviewCard()
+      }
 
-      const cardEl = document.getElementById('card')
-      const buttonsEl = document.getElementById('buttons')
+      // Section: all words sorted by most recent
+      const sorted = [...allWords].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
 
-      cardEl.addEventListener('click', () => {
-        cardEl.classList.add('revealed')
-        buttonsEl.classList.add('show')
-      })
+      const title = document.createElement('div')
+      title.className = 'section-title'
+      title.textContent = `全部单词 (${sorted.length})`
+      feed.appendChild(title)
 
-      buttonsEl.addEventListener('click', async (e) => {
-        if (e.target.tagName !== 'BUTTON') return
-        const quality = parseInt(e.target.dataset.quality)
-        await updateWordReview(card.word, quality)
-        debouncedSync()
-        currentIndex++
-        showCard()
-      })
+      for (const w of sorted) {
+        const el = document.createElement('div')
+        el.className = 'word-item'
+        const date = w.addedAt ? new Date(w.addedAt).toLocaleDateString('zh-CN') : ''
+        const bookInfo = w.book ? ` · ${w.book}` : ''
+        el.innerHTML = `
+          <div class="word-info">
+            <div class="word-text">${esc(w.word)}</div>
+            ${w.phonetic ? `<div class="word-phonetic">/${esc(w.phonetic)}/</div>` : ''}
+            <div class="word-trans">${esc(w.translation || '(无翻译)')}</div>
+            <div class="word-meta">${date}${bookInfo}${w.count > 1 ? ` · 查过 ${w.count} 次` : ''}</div>
+          </div>
+          <button class="delete-btn" title="删除">✕</button>
+        `
+        el.querySelector('.delete-btn').addEventListener('click', async () => {
+          await deleteWord(w.word)
+          el.remove()
+          debouncedSync()
+          const remaining = feed.querySelectorAll('.word-item').length
+          statsText.textContent = `${remaining} 词`
+        })
+        feed.appendChild(el)
+      }
     }
 
-    init()
+    function insertReviewCard() {
+      if (reviewIndex >= reviewCards.length) return
+      const w = reviewCards[reviewIndex]
+      const el = document.createElement('div')
+      el.className = 'review-card'
+      el.id = 'current-review'
+      el.innerHTML = `
+        <div class="label">📖 复习 (${reviewIndex + 1}/${reviewCards.length})</div>
+        <div class="word">${esc(w.word)}</div>
+        <div class="answer">${esc(w.translation || '(无翻译)')}</div>
+        <div class="tap-hint">点击显示答案</div>
+        <div class="review-buttons">
+          <button class="btn-forgot" data-q="1">忘了</button>
+          <button class="btn-hard" data-q="3">想起来了</button>
+          <button class="btn-good" data-q="5">秒答</button>
+        </div>
+      `
+      el.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') return
+        el.classList.add('revealed')
+      })
+      el.querySelectorAll('.review-buttons button').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const quality = parseInt(btn.dataset.q)
+          await updateWordReview(w.word, quality)
+          debouncedSync()
+          reviewIndex++
+          el.remove()
+          if (reviewIndex < reviewCards.length) {
+            // Insert next review card at top of feed
+            const firstChild = feed.firstChild
+            insertReviewCardBefore(firstChild)
+          }
+        })
+      })
+      feed.prepend(el)
+    }
+
+    function insertReviewCardBefore(ref) {
+      if (reviewIndex >= reviewCards.length) return
+      const w = reviewCards[reviewIndex]
+      const el = document.createElement('div')
+      el.className = 'review-card'
+      el.innerHTML = `
+        <div class="label">📖 复习 (${reviewIndex + 1}/${reviewCards.length})</div>
+        <div class="word">${esc(w.word)}</div>
+        <div class="answer">${esc(w.translation || '(无翻译)')}</div>
+        <div class="tap-hint">点击显示答案</div>
+        <div class="review-buttons">
+          <button class="btn-forgot" data-q="1">忘了</button>
+          <button class="btn-hard" data-q="3">想起来了</button>
+          <button class="btn-good" data-q="5">秒答</button>
+        </div>
+      `
+      el.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') return
+        el.classList.add('revealed')
+      })
+      el.querySelectorAll('.review-buttons button').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const quality = parseInt(btn.dataset.q)
+          await updateWordReview(w.word, quality)
+          debouncedSync()
+          reviewIndex++
+          el.remove()
+          if (reviewIndex < reviewCards.length) {
+            const sectionTitle = feed.querySelector('.section-title')
+            insertReviewCardBefore(sectionTitle)
+          }
+        })
+      })
+      feed.insertBefore(el, ref)
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
+
+    render()
   </script>
 </body>
 </html>

@@ -165,6 +165,16 @@ export async function getAllVocabulary() {
   })
 }
 
+export async function deleteWord(word) {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('vocabulary', 'readwrite')
+    tx.objectStore('vocabulary').delete(word.toLowerCase())
+    tx.oncomplete = resolve
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
 export async function clearVocabulary() {
   const db = await openDB()
   return new Promise((resolve, reject) => {
