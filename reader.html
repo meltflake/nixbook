@@ -325,6 +325,77 @@
     const view = document.createElement('foliate-view')
     container.append(view)
 
+    // --- Vocabulary word highlighting ---
+    let cachedVocabWords = null // Set of lowercase words from vocabulary
+
+    async function loadVocabWordsCache() {
+      if (cachedVocabWords !== null) return cachedVocabWords
+      const all = await getAllVocabulary()
+      cachedVocabWords = new Set(all.map(v => v.word.toLowerCase()))
+      console.log(`Loaded ${cachedVocabWords.size} vocabulary words for highlighting`)
+      return cachedVocabWords
+    }
+
+    // Apply vocab underline style — lighter dotted underline to distinguish from sentence highlights
+    function applyVocabWordStyle(range, doc) {
+      try {
+        const span = doc.createElement('span')
+        span.className = 'epub-vocab'
+        span.style.textDecoration = 'underline dotted #93a1a1'
+        span.style.textDecorationThickness = '1.5px'
+        span.style.textUnderlineOffset = '2px'
+        range.surroundContents(span)
+        return true
+      } catch (e) {
+        return false
+      }
+    }
+
+    // Scan doc for vocabulary words and underline them
+    async function restoreVocabHighlights(doc) {
+      const words = await loadVocabWordsCache()
+      if (!words.size) return
+
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+      const textNodes = []
+      let node
+      while (node = walker.nextNode()) {
+        // Skip nodes already inside highlights or vocab spans
+        if (node.parentElement?.closest('.epub-highlight, .epub-vocab')) continue
+        textNodes.push(node)
+      }
+
+      let count = 0
+      // Word boundary regex for English words
+      const wordRe = /[a-zA-Z'-]+/g
+      
+      for (const textNode of textNodes) {
+        const text = textNode.textContent
+        const matches = []
+        let m
+        while ((m = wordRe.exec(text)) !== null) {
+          if (words.has(m[0].toLowerCase())) {
+            matches.push({ start: m.index, end: m.index + m[0].length })
+          }
+        }
+        if (!matches.length) continue
+
+        // Apply in reverse order to preserve offsets
+        for (let i = matches.length - 1; i >= 0; i--) {
+          const { start, end } = matches[i]
+          try {
+            const range = doc.createRange()
+            range.setStart(textNode, start)
+            range.setEnd(textNode, end)
+            if (applyVocabWordStyle(range, doc)) count++
+          } catch (e) {
+            // Node may have been split by previous operation; skip
+          }
+        }
+      }
+      if (count > 0) console.log(`Highlighted ${count} vocabulary words in this section`)
+    }
+
     // --- Highlight restoration ---
     // Cache highlights for current book (loaded once)
     let cachedHighlights = null
@@ -504,8 +575,9 @@
     view.addEventListener('load', ({ detail: { doc, index } }) => {
       console.log('Document loaded, index:', index)
       
-      // Restore saved highlights for this section
+      // Restore saved highlights + vocabulary word underlines for this section
       restoreHighlights(doc)
+      restoreVocabHighlights(doc)
       
       // Store doc reference for translation toggle
       currentDocRef = doc
@@ -655,9 +727,12 @@
         const isWord = !text.includes(' ') && text.length < 30 && /^[a-zA-Z'-]+$/.test(text)
         
         if (isWord) {
+          // Apply vocab underline before clearing selection (range is still valid)
+          const wordRange = range.cloneRange()
           // Clear selection first to dismiss browser's native toolbar
           sel.removeAllRanges()
           justHandledSelection = true
+          applyVocabWordStyle(wordRange, doc)
           showDict(text, x, y, bookData.title)
         } else if (text.length < 2000) {
           sel.removeAllRanges()
@@ -979,7 +1054,10 @@
         if (local.phonetic) dictPhonetic.textContent = `/${local.phonetic}/`
         dictTranslation.textContent = local.translation
         saveWord(word, local.translation, bookTitle)
-          .then(() => debouncedSync())
+          .then(() => {
+            if (cachedVocabWords) cachedVocabWords.add(word.toLowerCase())
+            debouncedSync()
+          })
           .catch(e => console.error('Failed to save word:', e))
         return
       }
@@ -989,7 +1067,10 @@
       if (translation) {
         dictTranslation.textContent = translation
         saveWord(word, translation, bookTitle)
-          .then(() => debouncedSync())
+          .then(() => {
+            if (cachedVocabWords) cachedVocabWords.add(word.toLowerCase())
+            debouncedSync()
+          })
           .catch(e => console.error('Failed to save word:', e))
       } else {
         dictTranslation.innerHTML = '<span class="error">词典中未找到</span>'
