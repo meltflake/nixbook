@@ -13,7 +13,7 @@
 //
 // No separate tombstone arrays needed — deletion state lives in the records themselves.
 
-import { getAllBooks, getAllVocabulary, getAllHighlights, getBookTranslations, importTranslations, saveBook } from './db.js'
+import { getAllBooks, getAllVocabulary, getAllHighlights, getBookTranslations, importTranslations, saveBook, getCachedEpub } from './db.js'
 import { 
   isDropboxConfigured, isLoggedIn, uploadData, downloadData, 
   uploadBook, downloadBook, listBooks,
@@ -304,17 +304,21 @@ async function syncBookFiles(booksMeta, progressCallback) {
   try { remoteBookIds = await listBooks() } catch (e) { console.warn('Could not list remote books:', e) }
   
   for (const book of localBooks) {
-    if (book.file && !remoteBookIds.includes(book.id)) {
-      progressCallback?.(`上传书籍: ${book.title}...`)
-      try { await uploadBook(book.id, book.file) } catch (e) { console.error(`Failed to upload book ${book.id}:`, e) }
+    if (!remoteBookIds.includes(book.id)) {
+      const cachedFile = await getCachedEpub(book.id)
+      if (cachedFile) {
+        progressCallback?.(`上传书籍: ${book.title}...`)
+        try { await uploadBook(book.id, cachedFile) } catch (e) { console.error(`Failed to upload book ${book.id}:`, e) }
+      }
     }
   }
   
   progressCallback?.(`远端书籍文件: ${remoteBookIds.length}个`)
   for (const bookId of remoteBookIds) {
     const localBook = localBooksMap.get(bookId)
-    // Download if book doesn't exist locally OR exists but has no file blob (metadata-only from sync)
-    if (!localBook || !localBook.file) {
+    const cachedFile = localBook ? await getCachedEpub(bookId) : null
+    // Download if book doesn't exist locally OR not in cache
+    if (!localBook || !cachedFile) {
       const meta = booksMeta.find(b => b.id === bookId) || { id: bookId, title: bookId, addedAt: Date.now() }
       progressCallback?.(`下载书籍: ${meta.title || bookId}...`)
       try {

@@ -181,10 +181,10 @@
     </div>
   </div>
   <input type="file" id="file-input" accept=".epub" hidden>
-  <div id="app-version" style="text-align:center;font-size:11px;color:var(--dim);padding:8px 0;opacity:0.5">v0.0.34</div>
+  <div id="app-version" style="text-align:center;font-size:11px;color:var(--dim);padding:8px 0;opacity:0.5">v0.1.0</div>
 
   <script type="module">
-    import { saveBook, getBook, getAllBooks, deleteBook, getActiveVocabulary, getActiveHighlights, getBookTranslations, getAllTranslationCounts, importTranslations } from './db.js'
+    import { saveBook, getBook, getAllBooks, deleteBook, getActiveVocabulary, getActiveHighlights, getBookTranslations, getAllTranslationCounts, importTranslations, getCachedEpub } from './db.js'
     import { toggleTheme, getTheme } from './theme.js'
     import { isDropboxConfigured, isLoggedIn, startAuth, handleAuthCallback, clearAccessToken, getSyncStatus } from './dropbox.js'
     import { syncWithDropbox, pushToDropbox, syncBookTranslations } from './sync.js'
@@ -640,28 +640,24 @@
       for (const book of books) {
         const card = document.createElement('div'); card.className = 'book-card'; card.setAttribute('data-book-id', book.id)
         
-        // Check if coverBlob is valid (iOS Safari may evict blobs)
-        let coverValid = false
-        if (book.coverBlob) {
-          try { const t = book.coverBlob.slice(0, 1); await t.arrayBuffer(); coverValid = true } catch { coverValid = false }
-        }
-        
-        // Extract cover if missing/invalid but file exists (async, updates in background)
-        if (!coverValid && book.file) {
+        let coverHTML
+        if (book.coverDataURL) {
+          coverHTML = `<div class="book-cover"><img src="${book.coverDataURL}" alt=""></div>`
+        } else {
+          coverHTML = `<div class="book-cover" style="background:${strToColor(book.title || '')}">${esc((book.title || 'UN').slice(0, 2).toUpperCase())}</div>`
+          // Try to extract cover in background (from cached epub)
           const bookIdForCover = book.id
-          extractCoverOnly(book.file).then(async cover => {
-            if (cover) {
-              const fresh = await getBook(bookIdForCover)
-              if (fresh) { fresh.coverBlob = cover; await saveBook(fresh) }
-              const coverDiv = card.querySelector('.book-cover')
-              if (coverDiv) { coverDiv.innerHTML = ''; coverDiv.style.background = 'none'; const imgEl = document.createElement('img'); imgEl.src = URL.createObjectURL(cover); imgEl.style.cssText = 'width:100%;height:100%;object-fit:cover;'; coverDiv.appendChild(imgEl) }
-            }
+          getCachedEpub(bookIdForCover).then(file => {
+            if (!file) return
+            return extractCoverOnly(file)
+          }).then(async cover => {
+            if (!cover) return
+            const fresh = await getBook(bookIdForCover)
+            if (fresh) { fresh.coverBlob = cover; await saveBook(fresh) }
+            const coverDiv = card.querySelector('.book-cover')
+            if (coverDiv) { coverDiv.innerHTML = ''; coverDiv.style.background = 'none'; const imgEl = document.createElement('img'); imgEl.src = fresh?.coverDataURL || URL.createObjectURL(cover); imgEl.style.cssText = 'width:100%;height:100%;object-fit:cover;'; coverDiv.appendChild(imgEl) }
           }).catch(() => {})
         }
-        
-        let coverHTML
-        if (coverValid) { coverHTML = `<div class="book-cover"><img src="${URL.createObjectURL(book.coverBlob)}" alt=""></div>` }
-        else { coverHTML = `<div class="book-cover" style="background:${strToColor(book.title || '')}">${esc((book.title || 'UN').slice(0, 2).toUpperCase())}</div>` }
         
         const progressHTML = book.progress > 0 ? `<div class="book-progress">${Math.round(book.progress * 100)}%</div>` : ''
         

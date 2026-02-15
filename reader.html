@@ -275,19 +275,8 @@
       console.log(`📚 localStorage backup readAt=${backup.lastReadAt} progress=${Math.round((backup.progress||0)*100)}% — IndexedDB is current or newer`)
     }
     
-    // Check if file blob is valid (iOS Safari may evict large blobs from IndexedDB)
-    let fileValid = false
-    if (bookData?.file) {
-      try {
-        // Test if the blob is actually readable
-        const testSlice = bookData.file.slice(0, 4)
-        await testSlice.arrayBuffer()
-        fileValid = true
-      } catch { fileValid = false }
-    }
-    
-    // If file missing or invalid, try to download from Dropbox
-    if (!bookData || !fileValid) {
+    // If file missing (not in Cache API), try to download from Dropbox
+    if (!bookData || !bookData.file) {
       if (isDropboxConfigured() && isLoggedIn()) {
         document.getElementById('loading').textContent = '从云端下载书籍...'
         try {
@@ -311,7 +300,6 @@
               file: new File([blob], `${meta.title || bookId}.epub`, { type: 'application/epub+zip' }),
             }
             await saveBook(bookData)
-            fileValid = true
           }
         } catch (e) {
           console.error('Failed to download from Dropbox:', e)
@@ -320,7 +308,7 @@
       }
     }
     
-    if (!bookData || !fileValid) { 
+    if (!bookData || !bookData.file) { 
       document.getElementById('loading').textContent = '无法打开书籍，请返回重试'
       // Add a clickable back link
       const backLink = document.createElement('div')

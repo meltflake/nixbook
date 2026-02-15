@@ -30,10 +30,21 @@ function openDB() {
 
 // --- Books ---
 export async function saveBook(book) {
+  // Separate epub file → Cache API (not IndexedDB)
+  if (book.file) {
+    await cacheEpubFile(book.id, book.file)
+  }
+  // Convert coverBlob to thumbnail data URL string if it's a Blob
+  if (book.coverBlob && book.coverBlob instanceof Blob) {
+    const dataUrl = await blobToThumbnailDataURL(book.coverBlob)
+    if (dataUrl) book.coverDataURL = dataUrl
+  }
+  // Store metadata only (no large blobs) in IndexedDB
+  const { file, coverBlob, ...metadata } = book
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction('books', 'readwrite')
-    tx.objectStore('books').put(book)
+    tx.objectStore('books').put(metadata)
     tx.oncomplete = resolve
     tx.onerror = () => reject(tx.error)
   })
@@ -41,23 +52,30 @@ export async function saveBook(book) {
 
 export async function getBook(id) {
   const db = await openDB()
-  return new Promise((resolve, reject) => {
+  const metadata = await new Promise((resolve, reject) => {
     const req = db.transaction('books').objectStore('books').get(id)
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
   })
+  if (!metadata) return null
+  // Reassemble: load epub from Cache API
+  const file = await getCachedEpub(id)
+  return { ...metadata, file: file || null }
 }
 
 export async function getAllBooks() {
   const db = await openDB()
-  return new Promise((resolve, reject) => {
+  const books = await new Promise((resolve, reject) => {
     const req = db.transaction('books').objectStore('books').getAll()
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
   })
+  // Return metadata only (no file loading) — callers use getBook(id) when they need the file
+  return books
 }
 
 export async function deleteBook(id) {
+  await deleteCachedEpub(id)
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction('books', 'readwrite')
@@ -411,5 +429,53 @@ export async function importTranslations(translations) {
     for (const t of translations) store.put(t)
     tx.oncomplete = resolve
     tx.onerror = () => reject(tx.error)
+  })
+}
+
+// ========== Cache API for epub files ==========
+const EPUB_CACHE = 'nixbook-epub-files'
+
+export async function cacheEpubFile(bookId, file) {
+  try {
+    const cache = await caches.open(EPUB_CACHE)
+    const response = new Response(file, { headers: { 'Content-Type': 'application/epub+zip' } })
+    await cache.put(`/epub/${bookId}`, response)
+  } catch (e) { console.warn('Failed to cache epub:', e) }
+}
+
+export async function getCachedEpub(bookId) {
+  try {
+    const cache = await caches.open(EPUB_CACHE)
+    const response = await cache.match(`/epub/${bookId}`)
+    if (!response) return null
+    const blob = await response.blob()
+    return new File([blob], `${bookId}.epub`, { type: 'application/epub+zip' })
+  } catch { return null }
+}
+
+export async function deleteCachedEpub(bookId) {
+  try {
+    const cache = await caches.open(EPUB_CACHE)
+    await cache.delete(`/epub/${bookId}`)
+  } catch {}
+}
+
+// ========== Cover thumbnails ==========
+// Convert cover blob to a small data URL string (~5-10KB)
+export async function blobToThumbnailDataURL(blob, maxWidth = 200) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const ratio = maxWidth / img.width
+      const canvas = document.createElement('canvas')
+      canvas.width = maxWidth
+      canvas.height = Math.round(img.height * ratio)
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(img.src)
+      resolve(canvas.toDataURL('image/jpeg', 0.7))
+    }
+    img.onerror = () => { URL.revokeObjectURL(img.src); resolve(null) }
+    img.src = URL.createObjectURL(blob)
   })
 }
