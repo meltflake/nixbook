@@ -962,6 +962,13 @@
       const deleted = await deleteHighlightByText(bookId, text)
       console.log('Highlight deleted from DB:', deleted, text.substring(0, 30))
       
+      // Record tombstone so sync won't bring it back
+      try {
+        const tombstones = JSON.parse(localStorage.getItem('highlight-tombstones') || '[]')
+        tombstones.push({ bookId, text, deletedAt: Date.now() })
+        localStorage.setItem('highlight-tombstones', JSON.stringify(tombstones))
+      } catch {}
+      
       // Remove from cache
       if (cachedHighlights) {
         cachedHighlights = cachedHighlights.filter(h => h.text !== text)

@@ -69,6 +69,15 @@ export async function syncWithDropbox(progressCallback) {
     progressCallback?.('正在上传到云端...')
     await uploadData(freshLocalData)
     
+    // Clean up old tombstones (keep last 7 days only)
+    try {
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+      for (const key of ['highlight-tombstones', 'vocab-tombstones']) {
+        const ts = JSON.parse(localStorage.getItem(key) || '[]')
+        localStorage.setItem(key, JSON.stringify(ts.filter(t => (t.deletedAt || 0) > cutoff)))
+      }
+    } catch {}
+    
     progressCallback?.('正在同步书籍文件...')
     await syncBookFiles(freshLocalData.books, progressCallback)
     
@@ -121,10 +130,17 @@ function mergeData(local, remote) {
   }
   merged.books = Array.from(booksMap.values())
   
-  // Merge vocabulary (by word)
+  // Merge vocabulary (by word) — respect tombstones
+  let vocabTombstones = []
+  try { vocabTombstones = JSON.parse(localStorage.getItem('vocab-tombstones') || '[]') } catch {}
+  const vocabTombstoneKeys = new Set(vocabTombstones.map(t => t.word))
+  
   const vocabMap = new Map()
-  for (const word of (remote.vocabulary || [])) vocabMap.set(word.word, word)
+  for (const word of (remote.vocabulary || [])) {
+    if (!vocabTombstoneKeys.has(word.word)) vocabMap.set(word.word, word)
+  }
   for (const word of (local.vocabulary || [])) {
+    if (vocabTombstoneKeys.has(word.word)) continue
     const existing = vocabMap.get(word.word)
     if (existing) {
       vocabMap.set(word.word, { ...existing, ...word, count: Math.max(existing.count || 1, word.count || 1), interval: Math.max(existing.interval || 0, word.interval || 0) })
@@ -134,11 +150,16 @@ function mergeData(local, remote) {
   }
   merged.vocabulary = Array.from(vocabMap.values())
   
-  // Merge highlights
+  // Merge highlights — respect tombstones (deleted highlights should stay deleted)
+  let tombstones = []
+  try { tombstones = JSON.parse(localStorage.getItem('highlight-tombstones') || '[]') } catch {}
+  const tombstoneKeys = new Set(tombstones.map(t => `${t.bookId}:${t.text}`))
+  
   const highlightSet = new Set()
   const highlights = []
   for (const hl of [...(remote.highlights || []), ...(local.highlights || [])]) {
     const key = `${hl.bookId}:${hl.text}`
+    if (tombstoneKeys.has(key)) continue  // Skip deleted highlights
     if (!highlightSet.has(key)) { highlightSet.add(key); highlights.push(hl) }
   }
   merged.highlights = highlights
