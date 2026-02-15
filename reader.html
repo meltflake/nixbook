@@ -23,9 +23,10 @@
     .toolbar {
       display: flex; align-items: center; padding: 6px 12px; 
       background: var(--bg-bar); border-bottom: 1px solid var(--border); 
-      gap: 8px; z-index: 10; min-height: 44px;
+      gap: 8px; z-index: 1000; min-height: 44px;
       position: fixed; top: 0; left: 0; right: 0;
       transition: transform 0.25s ease, opacity 0.25s ease;
+      pointer-events: auto;
     }
     .toolbar.hidden {
       transform: translateY(-100%); opacity: 0; pointer-events: none;
@@ -53,9 +54,10 @@
     .bottom-bar {
       display: flex; align-items: center; padding: 6px 16px; 
       background: var(--bg-bar); border-top: 1px solid var(--border); 
-      gap: 10px; z-index: 10;
+      gap: 10px; z-index: 1000;
       position: fixed; bottom: 0; left: 0; right: 0;
       transition: transform 0.25s ease, opacity 0.25s ease;
+      pointer-events: auto;
     }
     .bottom-bar.bar-hidden {
       transform: translateY(100%); opacity: 0; pointer-events: none;
