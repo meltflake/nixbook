@@ -276,3 +276,11 @@
 - **Skip logic**: Text nodes inside `.epub-highlight` or `.epub-vocab` spans are skipped to avoid double-decoration
 - **Reverse-order application**: When multiple vocab words found in one text node, applied from end to start to preserve character offsets
 - **CSS class**: `.epub-vocab` (vs `.epub-highlight` for sentence highlights)
+
+#### Batch 18: Dict popup auto-dismiss (2026-02-15)
+- **Bug**: On mobile, dictionary popup stayed visible after swiping, tapping, or turning pages — never auto-dismissed
+- **Root cause**: `hideDict()` was only called on PC click-outside and explicit actions. No dismiss logic for touch gestures or page navigation.
+- **Fixes**:
+  - `relocate` event (any page turn): `hideDict()` at start of handler
+  - Horizontal swipe (touchend): `hideDict()` before `goLeft()`/`goRight()`
+  - Quick tap on mobile: if dict popup is visible, tap dismisses it (instead of toggling toolbar); second tap toggles toolbar as normal
