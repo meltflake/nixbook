@@ -749,9 +749,16 @@
     }
 
     // ========== 初始化 ==========
-    await renderBooks()
-    updateToolCounts()
-    await resumeQueuedTranslations()
+    try {
+      await renderBooks()
+      updateToolCounts()
+      await resumeQueuedTranslations()
+    } catch(e) {
+      const errDiv = document.createElement('div')
+      errDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:12px;background:red;color:white;font-size:14px;z-index:9999;word-break:break-all'
+      errDiv.textContent = 'Init error: ' + e.message + ' | ' + e.stack
+      document.body.appendChild(errDiv)
+    }
   </script>
 </body>
 </html>
