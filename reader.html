@@ -869,7 +869,53 @@
       debouncedSync()
     }
 
-    async function translateWord(word) {
+    // --- Offline Dictionary (ECDICT 80k) ---
+    let offlineDict = null
+    let dictLoading = false
+    
+    async function loadOfflineDict() {
+      if (offlineDict) return offlineDict
+      if (dictLoading) return null
+      dictLoading = true
+      try {
+        // Try IndexedDB cache first
+        const DB_NAME = 'epub-reader'
+        const db = await new Promise(r => { const req = indexedDB.open(DB_NAME, 4); req.onsuccess = () => r(req.result); req.onerror = () => r(null) })
+        if (db) {
+          // Check if dict is cached in localStorage (flag only, data in memory)
+          const cached = localStorage.getItem('dict-loaded-version')
+          if (cached === 'ecdict-80k-v1') {
+            // Already loaded in a previous session, but we need to re-fetch from network or cache
+          }
+        }
+        
+        console.log('📖 Loading offline dictionary...')
+        const res = await fetch('dict-ecdict.json')
+        if (res.ok) {
+          offlineDict = await res.json()
+          localStorage.setItem('dict-loaded-version', 'ecdict-80k-v1')
+          console.log(`📖 Dictionary loaded: ${Object.keys(offlineDict).length} entries`)
+        }
+      } catch (e) {
+        console.warn('📖 Failed to load offline dictionary:', e)
+      }
+      dictLoading = false
+      return offlineDict
+    }
+    
+    // Start loading dictionary immediately (async, doesn't block)
+    loadOfflineDict()
+    
+    function lookupWord(word) {
+      if (!offlineDict) return null
+      word = word.toLowerCase().trim()
+      const entry = offlineDict[word]
+      if (!entry) return null
+      return { phonetic: entry[0] || '', translation: entry[1] || '' }
+    }
+
+    // Fallback to online API if offline dict doesn't have the word
+    async function translateWordOnline(word) {
       const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=en|zh`
       try {
         const res = await fetch(url)
@@ -879,7 +925,6 @@
         }
         return null
       } catch (e) {
-        console.error('Translation error:', e)
         return null
       }
     }
@@ -891,17 +936,15 @@
 
       dictWord.textContent = word
       dictPhonetic.textContent = ''
-      dictTranslation.innerHTML = '<span class="loading-text">翻译中...</span>'
+      dictTranslation.innerHTML = '<span class="loading-text">查词中...</span>'
       
       const popupWidth = 280, popupHeight = 100
       const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
       let left, top
       if (isTouch) {
-        // Mobile: fixed position at top center, never blocked by browser toolbar
         left = Math.max(10, (window.innerWidth - popupWidth) / 2)
         top = 60
       } else {
-        // PC: near the selection
         left = Math.min(x, window.innerWidth - popupWidth - 20)
         top = y - popupHeight - 10
         if (top < 10) top = y + 20
@@ -910,15 +953,26 @@
       dictPopup.style.top = Math.max(10, top) + 'px'
       dictPopup.classList.add('show')
 
-      const translation = await translateWord(word)
+      // Try offline dictionary first
+      const local = lookupWord(word)
+      if (local) {
+        if (local.phonetic) dictPhonetic.textContent = `/${local.phonetic}/`
+        dictTranslation.textContent = local.translation
+        saveWord(word, local.translation, bookTitle)
+          .then(() => debouncedSync())
+          .catch(e => console.error('Failed to save word:', e))
+        return
+      }
+      
+      // Fallback to online API
+      const translation = await translateWordOnline(word)
       if (translation) {
         dictTranslation.textContent = translation
-        // Save word with translation to vocabulary
         saveWord(word, translation, bookTitle)
           .then(() => debouncedSync())
           .catch(e => console.error('Failed to save word:', e))
       } else {
-        dictTranslation.innerHTML = '<span class="error">无法翻译</span>'
+        dictTranslation.innerHTML = '<span class="error">词典中未找到</span>'
       }
     }
 
