@@ -293,13 +293,23 @@ async function syncBookFiles(booksMeta, progressCallback) {
   }
   
   for (const bookId of remoteBookIds) {
-    if (!localBooksMap.has(bookId)) {
+    const localBook = localBooksMap.get(bookId)
+    // Download if book doesn't exist locally OR exists but has no file blob (metadata-only from sync)
+    if (!localBook || !localBook.file) {
       const meta = booksMeta.find(b => b.id === bookId)
       if (meta) {
         progressCallback?.(`下载书籍: ${meta.title || bookId}...`)
         try {
           const blob = await downloadBook(bookId)
-          if (blob) await saveBook({ ...meta, file: new File([blob], `${meta.title || bookId}.epub`, { type: 'application/epub+zip' }) })
+          if (blob) {
+            // Re-read fresh record (applyMergedData may have written metadata)
+            const fresh = await (async () => {
+              const { getBook } = await import('./db.js')
+              return await getBook(bookId)
+            })()
+            const bookToSave = fresh || meta
+            await saveBook({ ...bookToSave, file: new File([blob], `${meta.title || bookId}.epub`, { type: 'application/epub+zip' }) })
+          }
         } catch (e) { console.error(`Failed to download book ${bookId}:`, e) }
       }
     }

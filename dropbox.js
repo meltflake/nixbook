@@ -145,8 +145,8 @@ export async function startAuth() {
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
   
-  // Store verifier for later
-  sessionStorage.setItem('dropbox-code-verifier', codeVerifier)
+  // Store verifier for later (localStorage survives redirects better than sessionStorage on iOS)
+  localStorage.setItem('dropbox-code-verifier', codeVerifier)
   
   const redirectUri = window.location.origin + window.location.pathname
   const authUrl = new URL('https://www.dropbox.com/oauth2/authorize')
@@ -167,7 +167,7 @@ export async function handleAuthCallback() {
   
   if (!code) return false
   
-  const codeVerifier = sessionStorage.getItem('dropbox-code-verifier')
+  const codeVerifier = localStorage.getItem('dropbox-code-verifier')
   if (!codeVerifier) {
     console.error('No code verifier found')
     return false
@@ -195,7 +195,7 @@ export async function handleAuthCallback() {
     if (data.access_token) {
       // Store both access_token and refresh_token!
       setTokens(data.access_token, data.refresh_token, data.expires_in || 14400)
-      sessionStorage.removeItem('dropbox-code-verifier')
+      localStorage.removeItem('dropbox-code-verifier')
       // Clean URL
       window.history.replaceState({}, '', window.location.pathname)
       console.log('Dropbox login successful, tokens stored')

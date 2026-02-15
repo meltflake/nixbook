@@ -455,7 +455,12 @@
     const bookGrid = document.getElementById('book-grid')
 
     // ========== Dropbox 同步 ==========
-    await handleAuthCallback()
+    const authResult = await handleAuthCallback()
+    // If URL had auth code but login failed, show error
+    if (new URLSearchParams(window.location.search).has('code') && !authResult && !isLoggedIn()) {
+      syncTimeEl.textContent = '登录失败，请重试'
+      syncTimeEl.style.color = '#dc322f'
+    }
     let isSyncing = false
     let autoSyncInterval = null
 
