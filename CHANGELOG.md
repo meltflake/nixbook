@@ -302,3 +302,14 @@
   - Bottom bar: `position: fixed; bottom: 0` — hidden via `transform: translateY(100%)`
   - `#reader-container`: changed from `flex: 1` to `position: absolute; inset: 0` (fills viewport independently)
 - **Result**: Toggling bars is purely visual (transform + opacity), zero layout recalculation
+
+#### Batch 21: Vocabulary page redesign + TOC right-side (2026-02-15)
+- **Vocabulary page (flashcards.html) redesigned** from pure flashcard mode to feed + inline review:
+  - Opens to a scrollable word feed showing all vocabulary sorted by most recent
+  - Each word card shows: word, phonetic, translation, date, source book, lookup count
+  - **Delete button (✕)** on each word — tap to remove from vocabulary immediately
+  - **Inline flashcard review** appears as a highlighted card at the top of the feed
+  - After answering (忘了/想起来了/秒答), next review card appears above the word list
+  - No separate "flashcard mode" — review is naturally embedded in the feed
+- **db.js**: Added `deleteWord(word)` function for vocabulary deletion
+- **TOC panel**: Moved from left to right side to match the TOC button position in toolbar
