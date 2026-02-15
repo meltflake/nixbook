@@ -54,7 +54,14 @@ export async function syncWithDropbox(progressCallback) {
   
   try {
     progressCallback?.('正在下载云端数据...')
-    const remoteData = await downloadData()
+    let remoteData
+    try {
+      remoteData = await downloadData()
+      progressCallback?.(`云端数据: ${remoteData ? JSON.stringify({books: remoteData.books?.length, vocab: remoteData.vocabulary?.length, hl: remoteData.highlights?.length}) : 'null (文件不存在)'}`)
+    } catch(dlErr) {
+      progressCallback?.('❌ 下载失败: ' + dlErr.message)
+      remoteData = null
+    }
     
     progressCallback?.('正在读取本地数据...')
     const localData = await exportLocalData()
@@ -77,8 +84,14 @@ export async function syncWithDropbox(progressCallback) {
     
     const freshLocalData = await exportLocalData()
     
-    progressCallback?.('正在上传到云端...')
-    await uploadData(freshLocalData)
+    progressCallback?.(`正在上传到云端... (${freshLocalData.books?.length || 0}本)`)
+    try {
+      await uploadData(freshLocalData)
+      progressCallback?.('上传成功')
+    } catch(uploadErr) {
+      progressCallback?.('❌ 上传失败: ' + uploadErr.message)
+      console.error('Upload failed:', uploadErr)
+    }
     
     progressCallback?.('正在同步书籍文件...')
     await syncBookFiles(freshLocalData.books, progressCallback)
