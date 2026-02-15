@@ -1110,16 +1110,19 @@
     }
 
     // --- Navigation ---
-    document.getElementById('btn-back').addEventListener('click', async () => {
-      // Wait for any pending save to complete before navigating
-      if (pendingSave) {
-        try { await pendingSave } catch {}
-      }
-      // Final save with latest state
-      bookData.lastReadAt = Date.now()
-      await saveBook(bookData)
-      console.log(`📚 Final save before navigation: progress=${Math.round((bookData.progress || 0) * 100)}%`)
-      location.href = 'index.html'
+    document.getElementById('btn-back').addEventListener('click', () => {
+      // Save progress then navigate — but NEVER block navigation
+      const timeout = new Promise(r => setTimeout(r, 2000))
+      const save = (async () => {
+        try {
+          if (pendingSave) await pendingSave
+        } catch {}
+        bookData.lastReadAt = Date.now()
+        try { await saveBook(bookData) } catch {}
+        console.log(`📚 Final save before navigation: progress=${Math.round((bookData.progress || 0) * 100)}%`)
+      })()
+      // Navigate after save OR after 2s timeout, whichever comes first
+      Promise.race([save, timeout]).then(() => { location.href = 'index.html' })
     })
     // Note: keyboard and click handlers are set up in the 'load' event listener above
 
