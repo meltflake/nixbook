@@ -554,15 +554,16 @@
       // Detect touch device
       const isTouchDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0
       
+      // Track whether a dictionary/highlight action just happened (prevents click toggling toolbar)
+      let justHandledSelection = false
+      
       // Click handler — PC only (mobile uses touchend to avoid double-fire)
       doc.addEventListener('click', e => {
-        hideDict()
-        hideDeletePopup()
-        
         const highlightSpan = e.target.closest?.('.epub-highlight')
         if (highlightSpan) {
           e.preventDefault()
           e.stopPropagation()
+          hideDict()
           showDeletePopup(highlightSpan, e, doc)
           return
         }
@@ -570,8 +571,25 @@
         // Skip on touch devices — touchend handles tap/swipe
         if (isTouchDevice()) return
         
-        // PC: click toggles toolbar (unless text selected or link)
+        // If we just showed a dict popup or highlight, don't toggle bars
+        if (justHandledSelection) {
+          justHandledSelection = false
+          return
+        }
+        
+        // If dict popup is visible, clicking outside closes it (don't toggle bars)
+        if (dictPopup.classList.contains('show')) {
+          hideDict()
+          return
+        }
+        if (deletePopup.classList.contains('show')) {
+          hideDeletePopup()
+          return
+        }
+        
+        // PC: click toggles toolbar (unless text selected or link or drag-selected)
         if (e.target.closest?.('a[href]')) return
+        if (isSelecting) return
         const sel = doc.getSelection()
         if (sel && sel.toString().trim().length > 0) return
         toggleBars()
@@ -639,9 +657,11 @@
         if (isWord) {
           // Clear selection first to dismiss browser's native toolbar
           sel.removeAllRanges()
+          justHandledSelection = true
           showDict(text, x, y, bookData.title)
         } else if (text.length < 2000) {
           sel.removeAllRanges()
+          justHandledSelection = true
           hideDict()
           applyHighlight(text, range, doc)
         }
