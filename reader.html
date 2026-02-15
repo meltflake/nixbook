@@ -181,6 +181,7 @@
     
     // Sync on every change (deduplicated — won't fire if already syncing)
     let isSyncing = false
+    let pendingSave = null  // Track the latest save promise
     function debouncedSync() {
       if (!isDropboxConfigured() || !isLoggedIn() || isSyncing) return
       isSyncing = true
@@ -730,11 +731,12 @@
         chapterLabel.textContent = detail.tocItem.label || ''
       }
 
-      // Save progress (await to ensure IndexedDB write completes before user navigates away)
+      // Save progress — track promise so we can await before navigation
       bookData.progress = fraction
       bookData.lastLocation = detail.cfi
       bookData.lastReadAt = Date.now()
-      saveBook(bookData).then(() => debouncedSync()).catch(e => console.error('Save failed:', e))
+      console.log(`📚 Saving progress: ${Math.round(fraction * 100)}% cfi=${detail.cfi?.substring(0, 40)}`)
+      pendingSave = saveBook(bookData).then(() => debouncedSync()).catch(e => console.error('Save failed:', e))
     })
 
     slider.addEventListener('input', () => {
@@ -892,7 +894,15 @@
     }
 
     // --- Navigation ---
-    document.getElementById('btn-back').addEventListener('click', () => {
+    document.getElementById('btn-back').addEventListener('click', async () => {
+      // Wait for any pending save to complete before navigating
+      if (pendingSave) {
+        try { await pendingSave } catch {}
+      }
+      // Final save with latest state
+      bookData.lastReadAt = Date.now()
+      await saveBook(bookData)
+      console.log(`📚 Final save before navigation: progress=${Math.round((bookData.progress || 0) * 100)}%`)
       location.href = 'index.html'
     })
     // Note: keyboard and click handlers are set up in the 'load' event listener above
@@ -932,6 +942,23 @@
     // Save last read timestamp
     bookData.lastReadAt = Date.now()
     saveBook(bookData)
+
+    // Ensure progress is saved when page is hidden/closed (swipe back, tab close, etc.)
+    function saveProgressSync() {
+      // Use synchronous-ish save as last resort
+      bookData.lastReadAt = Date.now()
+      saveBook(bookData).catch(() => {})
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('📚 visibilitychange→hidden: saving progress')
+        saveProgressSync()
+      }
+    })
+    window.addEventListener('pagehide', () => {
+      console.log('📚 pagehide: saving progress')
+      saveProgressSync()
+    })
 
     // Hide popups when clicking outside
     document.addEventListener('click', (e) => {

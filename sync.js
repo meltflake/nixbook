@@ -21,8 +21,6 @@ export async function exportLocalData() {
     lastReadAt: b.lastReadAt,
     progress: b.progress,
     lastLocation: b.lastLocation,
-    // coverBlob and file not included
-    // translations synced separately to /translations/{bookId}.json
   }))
   
   return {
@@ -31,26 +29,7 @@ export async function exportLocalData() {
     books: booksMetadata,
     vocabulary,
     highlights,
-    // translations not included here - synced per-book
   }
-}
-
-// Import data to local IndexedDB
-export async function importData(data, db) {
-  if (!data) return
-  
-  // Import vocabulary
-  if (data.vocabulary && Array.isArray(data.vocabulary)) {
-    const { openDB } = await import('./db.js')
-    // This is handled in the merge logic below
-  }
-  
-  // Import highlights  
-  if (data.highlights && Array.isArray(data.highlights)) {
-    // This is handled in the merge logic below
-  }
-  
-  // Books metadata is merged with local, actual files synced separately
 }
 
 // Full sync with Dropbox
@@ -69,25 +48,29 @@ export async function syncWithDropbox(progressCallback) {
     progressCallback?.('正在读取本地数据...')
     const localData = await exportLocalData()
     
-    // 3. Merge data (remote wins for conflicts, but we keep both unique items)
+    // 3. Merge data (local-first: local wins unless remote is genuinely newer)
     progressCallback?.('正在合并数据...')
     const mergedData = mergeData(localData, remoteData)
     
-    // 4. Apply merged data to local IndexedDB
+    // 4. Apply merged data to local IndexedDB (defensive: won't overwrite newer local data)
     progressCallback?.('正在更新本地数据库...')
     await applyMergedData(mergedData)
     
-    // 5. Upload merged data back to Dropbox
+    // 5. Re-read local data AFTER apply (in case applyMergedData skipped some updates)
+    // This ensures we upload the TRUE latest state, not the merge result
+    const freshLocalData = await exportLocalData()
+    
+    // 6. Upload fresh local data to Dropbox (source of truth = local IndexedDB)
     progressCallback?.('正在上传到云端...')
-    await uploadData(mergedData)
+    await uploadData(freshLocalData)
     
-    // 6. Sync book files
+    // 7. Sync book files
     progressCallback?.('正在同步书籍文件...')
-    await syncBookFiles(mergedData.books, progressCallback)
+    await syncBookFiles(freshLocalData.books, progressCallback)
     
-    // 7. Sync translations for all books
+    // 8. Sync translations for all books
     progressCallback?.('正在同步翻译...')
-    for (const book of mergedData.books) {
+    for (const book of freshLocalData.books) {
       try {
         await syncBookTranslations(book.id)
       } catch (e) {
@@ -119,23 +102,23 @@ function mergeData(local, remote) {
   // Merge books (by id) — local wins on progress if more recent
   const booksMap = new Map()
   for (const book of (local.books || [])) {
-    booksMap.set(book.id, book)
+    booksMap.set(book.id, { ...book, _source: 'local' })
   }
   for (const book of (remote.books || [])) {
     const existing = booksMap.get(book.id)
     if (existing) {
-      // Local wins if it has more recent reading activity
-      // Only take remote if it's genuinely newer
+      // Only take remote progress if remote is STRICTLY newer
       if ((book.lastReadAt || 0) > (existing.lastReadAt || 0)) {
-        // Remote is newer — take remote but preserve local file
-        booksMap.set(book.id, { ...book, file: existing.file || book.file })
+        console.log(`📚 Sync: remote wins for "${book.title}": remote=${new Date(book.lastReadAt).toISOString()} local=${new Date(existing.lastReadAt).toISOString()} progress: ${existing.progress}→${book.progress}`)
+        booksMap.set(book.id, { ...book, _source: 'remote' })
+      } else {
+        console.log(`📚 Sync: local wins for "${existing.title}": local=${new Date(existing.lastReadAt).toISOString()} remote=${new Date(book.lastReadAt || 0).toISOString()} progress: ${existing.progress}`)
       }
-      // Otherwise keep local (already in map)
     } else {
-      booksMap.set(book.id, book)
+      booksMap.set(book.id, { ...book, _source: 'remote' })
     }
   }
-  merged.books = Array.from(booksMap.values())
+  merged.books = Array.from(booksMap.values()).map(({ _source, ...b }) => b)
   
   // Merge vocabulary (by word)
   const vocabMap = new Map()
@@ -145,12 +128,10 @@ function mergeData(local, remote) {
   for (const word of (local.vocabulary || [])) {
     const existing = vocabMap.get(word.word)
     if (existing) {
-      // Merge: keep higher count, more recent review data
       vocabMap.set(word.word, {
         ...existing,
         ...word,
         count: Math.max(existing.count || 1, word.count || 1),
-        // Keep the review state from whichever is more "progressed"
         interval: Math.max(existing.interval || 0, word.interval || 0),
       })
     } else {
@@ -171,15 +152,14 @@ function mergeData(local, remote) {
   }
   merged.highlights = highlights
   
-  // Translations are synced separately per book
-  
   return merged
 }
 
 // Apply merged data to local IndexedDB
+// DEFENSIVE: re-reads current local state and only overwrites if merged is newer
 async function applyMergedData(data) {
   const DB_NAME = 'epub-reader'
-  const DB_VERSION = 4  // Updated for translations
+  const DB_VERSION = 4
   
   const db = await new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
@@ -201,10 +181,9 @@ async function applyMergedData(data) {
   // Update highlights
   const hlTx = db.transaction('highlights', 'readwrite')
   const hlStore = hlTx.objectStore('highlights')
-  // Clear and re-add to avoid duplicates with auto-increment IDs
   hlStore.clear()
   for (const hl of (data.highlights || [])) {
-    const { id, ...hlWithoutId } = hl // Remove id to let IndexedDB auto-generate
+    const { id, ...hlWithoutId } = hl
     hlStore.add(hlWithoutId)
   }
   await new Promise((resolve, reject) => {
@@ -212,18 +191,33 @@ async function applyMergedData(data) {
     hlTx.onerror = () => reject(hlTx.error)
   })
   
-  // Translations are synced separately per book (not in main data file)
-  
-  // Update books metadata (progress, lastLocation, etc.)
+  // Update books metadata — DEFENSIVE: only overwrite if merged is newer or equal
   const booksTx = db.transaction('books', 'readwrite')
   const booksStore = booksTx.objectStore('books')
   for (const book of (data.books || [])) {
-    // Read existing to preserve file blob (not in merged data from cloud)
-    const existing = await new Promise(r => { const req = booksStore.get(book.id); req.onsuccess = () => r(req.result); req.onerror = () => r(null) })
+    const existing = await new Promise(r => {
+      const req = booksStore.get(book.id)
+      req.onsuccess = () => r(req.result)
+      req.onerror = () => r(null)
+    })
     if (existing) {
-      // Update metadata but keep local file
-      booksStore.put({ ...existing, progress: book.progress, lastLocation: book.lastLocation, lastReadAt: book.lastReadAt, title: book.title, author: book.author, coverBlob: book.coverBlob || existing.coverBlob })
+      // CRITICAL: only update progress if merged data is at least as new as current local
+      // This prevents a race where local was updated AFTER the merge was computed
+      if ((book.lastReadAt || 0) >= (existing.lastReadAt || 0)) {
+        booksStore.put({
+          ...existing,
+          progress: book.progress,
+          lastLocation: book.lastLocation,
+          lastReadAt: book.lastReadAt,
+          title: book.title,
+          author: book.author,
+          coverBlob: book.coverBlob || existing.coverBlob,
+        })
+      } else {
+        console.log(`📚 applyMergedData: SKIPPED overwrite for "${existing.title}" — local is newer (local=${existing.lastReadAt} > merged=${book.lastReadAt})`)
+      }
     }
+    // If book doesn't exist locally (no file), don't create a stub — syncBookFiles handles that
   }
   await new Promise((resolve, reject) => {
     booksTx.oncomplete = resolve
@@ -238,7 +232,6 @@ async function syncBookFiles(booksMeta, progressCallback) {
   const localBooks = await getAllBooks()
   const localBooksMap = new Map(localBooks.map(b => [b.id, b]))
   
-  // Get list of books in Dropbox
   let remoteBookIds = []
   try {
     remoteBookIds = await listBooks()
@@ -280,7 +273,7 @@ async function syncBookFiles(booksMeta, progressCallback) {
   }
 }
 
-// Quick push local changes to Dropbox (without full merge)
+// Quick push: upload local state to Dropbox (no merge — used by reader on page turn)
 export async function pushToDropbox() {
   if (!isDropboxConfigured() || !isLoggedIn()) {
     return { success: false, error: 'Not configured or not logged in' }
@@ -302,14 +295,12 @@ export async function syncBookTranslations(bookId) {
   }
   
   try {
-    // Get local translations for this book
     const localTranslations = await getBookTranslations(bookId)
     const localArray = Object.entries(localTranslations).map(([hash, translation]) => ({
       hash,
       translation
     }))
     
-    // Try to download remote translations
     let remoteTranslations = null
     try {
       remoteTranslations = await downloadBookTranslations(bookId)
@@ -328,13 +319,11 @@ export async function syncBookTranslations(bookId) {
       merged[t.hash] = t.translation
     }
     
-    // Convert back to array format for storage
     const mergedArray = Object.entries(merged).map(([hash, translation]) => ({
       hash,
       translation
     }))
     
-    // Import to local IndexedDB (so new devices get translations)
     if (mergedArray.length > 0) {
       const toImport = mergedArray.map(t => ({
         bookId,
@@ -343,8 +332,6 @@ export async function syncBookTranslations(bookId) {
         savedAt: Date.now()
       }))
       await importTranslations(toImport)
-      
-      // Upload merged translations back to Dropbox
       await uploadBookTranslations(bookId, mergedArray)
       console.log(`Synced ${mergedArray.length} translations for book ${bookId}`)
     }
