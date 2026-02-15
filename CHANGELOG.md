@@ -258,3 +258,11 @@
 - Dictionary popup now shows **phonetic notation** (`/fəˈnetɪk/`) between word and translation
 - Fallback: if word not in offline dict, tries MyMemory API (graceful degradation)
 - **No network needed** for word lookup in normal reading
+
+#### Batch 16: PC word lookup / toolbar toggle conflict (2026-02-15)
+- **Bug**: On PC, selecting a word for dictionary lookup also triggered toolbar toggle
+- **Root cause**: `handleSelection` calls `sel.removeAllRanges()` to dismiss browser native toolbar. The `click` event fires AFTER `mouseup`, and by that time the selection is empty, so the `sel.toString().length > 0` guard fails → toolbar toggles.
+- **Fix**: Added `justHandledSelection` flag, set to `true` in `handleSelection`, checked and reset in `click` handler. Also:
+  - `isSelecting` (mouse drag >5px) now blocks toolbar toggle
+  - Clicking outside dict popup closes it without toggling toolbar
+  - Clicking outside delete popup closes it without toggling toolbar
