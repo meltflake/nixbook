@@ -242,9 +242,35 @@
     // Load foliate-js
     await import(FOLIATE_CDN + 'view.js')
 
+    // localStorage backup key for progress (safety net if IndexedDB gets overwritten)
+    const PROGRESS_BACKUP_KEY = `progress-backup-${bookId}`
+    
+    function backupProgress(progress, lastLocation, lastReadAt) {
+      try {
+        localStorage.setItem(PROGRESS_BACKUP_KEY, JSON.stringify({ progress, lastLocation, lastReadAt }))
+      } catch {}
+    }
+    
+    function getProgressBackup() {
+      try { return JSON.parse(localStorage.getItem(PROGRESS_BACKUP_KEY)) } catch { return null }
+    }
+
     // Load book from IndexedDB (local cache)
     let bookData = await getBook(bookId)
     console.log('📚 Loaded from IndexedDB:', bookData ? `progress=${Math.round((bookData.progress||0)*100)}% lastLocation=${bookData.lastLocation?.substring(0,50) || 'null'} lastReadAt=${bookData.lastReadAt}` : 'NOT FOUND')
+    
+    // Check localStorage backup — if it has newer progress, restore it
+    const backup = getProgressBackup()
+    if (backup && bookData && (backup.lastReadAt || 0) > (bookData.lastReadAt || 0)) {
+      console.log(`📚 ⚠️ localStorage backup is NEWER! backup readAt=${backup.lastReadAt} progress=${Math.round((backup.progress||0)*100)}% vs IndexedDB readAt=${bookData.lastReadAt} progress=${Math.round((bookData.progress||0)*100)}%`)
+      console.log(`📚 Restoring progress from localStorage backup`)
+      bookData.progress = backup.progress
+      bookData.lastLocation = backup.lastLocation
+      bookData.lastReadAt = backup.lastReadAt
+      await saveBook(bookData)
+    } else if (backup) {
+      console.log(`📚 localStorage backup readAt=${backup.lastReadAt} progress=${Math.round((backup.progress||0)*100)}% — IndexedDB is current or newer`)
+    }
     
     // If not in local cache, try to download from Dropbox
     if (!bookData || !bookData.file) {
@@ -736,6 +762,8 @@
       bookData.progress = fraction
       bookData.lastLocation = detail.cfi
       bookData.lastReadAt = Date.now()
+      // Backup to localStorage (survives even if IndexedDB write is interrupted)
+      backupProgress(fraction, detail.cfi, bookData.lastReadAt)
       console.log(`📚 Saving progress: ${Math.round(fraction * 100)}% cfi=${detail.cfi?.substring(0, 40)}`)
       pendingSave = saveBook(bookData).then(() => debouncedSync()).catch(e => console.error('Save failed:', e))
     })
