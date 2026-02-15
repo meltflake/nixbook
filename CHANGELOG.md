@@ -241,3 +241,11 @@
 - **Fix**: All async callbacks now re-read the fresh record from IndexedDB via `getBook(bookId)` before saving, ensuring only the intended field (coverBlob, paragraphCount) is updated.
 - **Rule**: NEVER do `saveBook(entireObject)` for partial field updates. Always re-read the latest record first.
 - **Also added**: Diagnostic logging in reader.html to trace lastLocation at every key point.
+
+#### Batch 14: localStorage progress backup + sync logging (2026-02-15)
+- **New safety net**: reader.html backs up progress to localStorage on every page turn (`progress-backup-{bookId}`)
+- On reader load: if localStorage backup has newer `lastReadAt` than IndexedDB, restores from backup before displaying
+- **Tested with Playwright**: corrupted IndexedDB with stale data → reader correctly recovered from localStorage backup
+- **sync.js hardened**: `applyMergedData` now uses STRICT greater-than (`>` not `>=`) for progress overwrites. Same-timestamp case only updates metadata (title, author, paragraphCount), never progress/lastLocation.
+- **Comprehensive logging added**: every sync step logs with `📚 SYNC`, `📚 MERGE`, `📚 APPLY` prefixes, showing progress values and which side wins
+- **Key insight from testing**: once IndexedDB has stale data, reader loads it and saves with new `lastReadAt`, creating a self-reinforcing loop. The localStorage backup breaks this loop.
