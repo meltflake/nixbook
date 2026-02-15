@@ -21,6 +21,7 @@ export async function exportLocalData() {
     lastReadAt: b.lastReadAt,
     progress: b.progress,
     lastLocation: b.lastLocation,
+    paragraphCount: b.paragraphCount || null,
   }))
   
   return {
@@ -212,6 +213,7 @@ async function applyMergedData(data) {
           title: book.title,
           author: book.author,
           coverBlob: book.coverBlob || existing.coverBlob,
+          paragraphCount: book.paragraphCount || existing.paragraphCount || null,
         })
       } else {
         console.log(`📚 applyMergedData: SKIPPED overwrite for "${existing.title}" — local is newer (local=${existing.lastReadAt} > merged=${book.lastReadAt})`)

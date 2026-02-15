@@ -182,7 +182,7 @@
   <input type="file" id="file-input" accept=".epub" hidden>
 
   <script type="module">
-    import { saveBook, getAllBooks, deleteBook, getAllVocabulary, getAllHighlights, getBookTranslations, importTranslations } from './db.js'
+    import { saveBook, getBook, getAllBooks, deleteBook, getAllVocabulary, getAllHighlights, getBookTranslations, importTranslations } from './db.js'
     import { toggleTheme, getTheme } from './theme.js'
     import { isDropboxConfigured, isLoggedIn, startAuth, handleAuthCallback, clearAccessToken, getSyncStatus } from './dropbox.js'
     import { syncWithDropbox, pushToDropbox, syncBookTranslations } from './sync.js'
@@ -310,9 +310,12 @@
             } catch {}
           }
           updateQueuedTask(bookId, { status: 'translating', paragraphs: allParagraphs, totalCount: allParagraphs.length, startedAt: Date.now() })
-          // Save unique hash count (not total paragraphs, since duplicates share the same hash)
+          // Save unique hash count to both localStorage AND book metadata (for cross-device sync)
           const uniqueHashes = new Set(allParagraphs.map(p => p.hash)).size
           saveParagraphCount(bookId, uniqueHashes)
+          // Persist to IndexedDB book record so it syncs via Dropbox
+          const bookRecord = await getBook(bookId)
+          if (bookRecord) { bookRecord.paragraphCount = uniqueHashes; await saveBook(bookRecord) }
           console.log('📚 Parsed paragraphs:', allParagraphs.length)
         } else {
           console.log('📚 Using cached paragraphs:', allParagraphs.length)
@@ -512,6 +515,36 @@
       } catch (e) { console.error('Cover extraction failed:', e); return null }
     }
 
+    // Extract cover only (lightweight, for books missing covers)
+    async function extractCoverOnly(file) {
+      try {
+        const [{ EPUB }, loader] = await Promise.all([import(FOLIATE_CDN + 'epub.js'), makeZipLoader(file)])
+        const book = await new EPUB(loader).init()
+        return await book.getCover?.() || null
+      } catch (e) { return null }
+    }
+
+    // Count unique translatable paragraphs in an EPUB
+    async function countParagraphs(file) {
+      try {
+        const [{ EPUB }, loader] = await Promise.all([import(FOLIATE_CDN + 'epub.js'), makeZipLoader(file)])
+        const book = await new EPUB(loader).init()
+        const sections = book.sections || []
+        const hashes = new Set()
+        for (let i = 0; i < sections.length; i++) {
+          try {
+            const doc = await sections[i].createDocument()
+            if (!doc) continue
+            doc.querySelectorAll('p').forEach(p => {
+              const text = p.textContent?.trim()
+              if (text && text.length >= 10 && !/[\u4e00-\u9fff]/.test(text)) hashes.add(hashText(text))
+            })
+          } catch {}
+        }
+        return hashes.size
+      } catch (e) { return null }
+    }
+
     async function handleFile(file) {
       if (!file.name.toLowerCase().endsWith('.epub')) { alert('请选择 EPUB 文件'); return }
       const bookId = crypto.randomUUID()
@@ -574,6 +607,22 @@
       for (const book of books) {
         const card = document.createElement('div'); card.className = 'book-card'; card.setAttribute('data-book-id', book.id)
         
+        // Extract cover if missing but file exists (async, updates in background)
+        if (!book.coverBlob && book.file) {
+          extractCoverOnly(book.file).then(cover => {
+            if (cover) {
+              book.coverBlob = cover
+              saveBook(book)
+              const img = card.querySelector('.book-cover img')
+              if (img) { img.src = URL.createObjectURL(cover) }
+              else {
+                const coverDiv = card.querySelector('.book-cover')
+                if (coverDiv) { coverDiv.innerHTML = ''; coverDiv.style.background = 'none'; const imgEl = document.createElement('img'); imgEl.src = URL.createObjectURL(cover); imgEl.style.cssText = 'width:100%;height:100%;object-fit:cover;'; coverDiv.appendChild(imgEl) }
+              }
+            }
+          })
+        }
+        
         let coverHTML
         if (book.coverBlob) { coverHTML = `<div class="book-cover"><img src="${URL.createObjectURL(book.coverBlob)}" alt=""></div>` }
         else { coverHTML = `<div class="book-cover" style="background:${strToColor(book.title || '')}">${esc((book.title || 'UN').slice(0, 2).toUpperCase())}</div>` }
@@ -584,28 +633,52 @@
         const translationCount = Object.keys(translations).length
         const activeState = translationStates.get(book.id)
         const queuedTask = getQueuedTask(book.id)
-        const completed = isTranslationComplete(book.id)
+        
+        // Total paragraph count: prefer IndexedDB (syncs via Dropbox), fallback to localStorage
+        const totalParas = book.paragraphCount || getBookParagraphCount(book.id) || (queuedTask?.totalCount) || null
+        
+        // Backfill: if localStorage has count but book record doesn't, save to IndexedDB for future sync
+        if (!book.paragraphCount && totalParas) {
+          book.paragraphCount = totalParas
+          saveBook(book)
+        }
         
         let badgeHTML = ''
         let translateInfoHTML = ''
-        const totalParas = getBookParagraphCount(book.id) || (queuedTask?.totalCount) || (completed?.count) || null
         if (activeState && activeState.status !== 'done') {
           const cls = activeState.status === 'error' ? 'error' : ''
           badgeHTML = `<div class="book-translate-badge ${cls}">${activeState.message}</div>`
         } else if (totalParas && translationCount >= totalParas) {
-          // Fully translated
+          // Fully translated — show completion, no action needed
           translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount}/${totalParas} 段 ✓</div>`
-        } else if (queuedTask && queuedTask.status !== 'error') {
-          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续 ${queuedTask.progress || 0}%</div>`
-        } else if (translationCount > 0 && book.file) {
-          // Partially translated, can resume
-          const info = totalParas ? `${translationCount}/${totalParas}` : `${translationCount}`
-          translateInfoHTML = `<div class="book-translate-info">${info} 段</div>`
-          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续翻译</div>`
+        } else if (translationCount > 0 && totalParas) {
+          // Partially translated, we know the total
+          translateInfoHTML = `<div class="book-translate-info">${translationCount}/${totalParas} 段</div>`
+          if (book.file) badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续翻译</div>`
+        } else if (translationCount > 0 && !totalParas && book.file) {
+          // Has translations but unknown total — need to count paragraphs to check completion
+          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
+          // Count paragraphs in background to determine if complete
+          countParagraphs(book.file).then(count => {
+            if (count) {
+              book.paragraphCount = count
+              saveBook(book)
+              saveParagraphCount(book.id, count)
+              // Update the UI
+              const infoEl = card.querySelector('.book-translate-info')
+              const badgeEl = card.querySelector('.book-translate-badge')
+              if (translationCount >= count) {
+                if (infoEl) infoEl.textContent = `已翻译 ${translationCount}/${count} 段 ✓`
+                if (badgeEl) badgeEl.remove()
+              } else {
+                if (infoEl) infoEl.textContent = `${translationCount}/${count} 段`
+              }
+            }
+          })
+          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">检查翻译</div>`
         } else if (translationCount > 0) {
-          // Has translations but no file (cloud sync), can't resume
-          const info = totalParas ? `${translationCount}/${totalParas}` : `${translationCount}`
-          translateInfoHTML = `<div class="book-translate-info">已翻译 ${info} 段</div>`
+          // Has translations but no file (cloud only), can't check
+          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
         } else if (book.file) {
           badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">翻译</div>`
         }
