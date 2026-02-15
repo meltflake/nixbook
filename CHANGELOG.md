@@ -390,3 +390,13 @@ The sync model now follows the **Last-Writer-Wins Element Set** pattern used in 
 | Translations | `bookId:hash` | Additive (never deleted) |
 
 **Files changed**: db.js (soft-delete), sync.js (LWW merge), reader.html, index.html, flashcards.html, highlights.html (use active-only queries for display)
+
+#### Batch 25: Fraction-based progress restore (2026-02-15)
+- **Problem**: CFI-based position restoration (`view.init({lastLocation: cfi})`) frequently fails with "setEnd on Range: parameter 1 is not of type Node" — then the reader falls back to the beginning and overwrites saved progress
+- **Root cause**: EPUB CFI references specific DOM nodes that may not exist in the same form across different renders, screen sizes, or pagination states. This is a known fragility of the EPUB CFI spec.
+- **New strategy**: Always `view.init({showTextStart: true})` then `view.goToFraction(savedProgress)`
+  - `progress` (a float 0-1) is always valid — it's a simple percentage
+  - Slightly less precise than CFI (lands at the nearest page to that percentage, not the exact character)
+  - But **100% reliable** — never fails, never corrupts
+- **Still saves CFI**: `lastLocation` (CFI) is still saved on every `relocate` event for potential future use, but is no longer used for restoration
+- **Protection window retained**: The 3-second init protection still blocks progress regression during initial `relocate` events
