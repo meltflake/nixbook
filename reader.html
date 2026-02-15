@@ -15,7 +15,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
     body {
-      height: 100dvh; display: flex; flex-direction: column; 
+      height: 100vh; display: flex; flex-direction: column; 
       background: var(--bg); color: var(--text); overflow: hidden;
     }
 
@@ -49,14 +49,6 @@
 
     #reader-container { flex: 1; position: relative; overflow: hidden; background: var(--bg); min-height: 0; }
     #reader-container foliate-view { width: 100%; height: 100%; }
-    
-    /* Mobile bottom safe area — prevent browser nav bar from covering content */
-    @supports (padding-bottom: env(safe-area-inset-bottom)) {
-      #reader-container { padding-bottom: env(safe-area-inset-bottom); }
-    }
-    @media (pointer: coarse) {
-      #reader-container foliate-view { height: calc(100% - 32px); }
-    }
 
     .bottom-bar {
       display: none; /* Hidden by default */
@@ -159,6 +151,17 @@
 
   <div class="delete-popup" id="delete-popup">🗑 删除划线</div>
 
+  <script>
+    // Set real viewport height (excludes mobile browser chrome)
+    function setRealHeight() {
+      document.body.style.height = window.innerHeight + 'px'
+    }
+    setRealHeight()
+    window.addEventListener('resize', setRealHeight)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setRealHeight)
+    }
+  </script>
   <script type="module">
     // Global error handler to catch any uncaught errors
     window.addEventListener('error', (e) => {
