@@ -198,6 +198,16 @@
       localStorage.setItem(TRANSLATION_COMPLETE_KEY, JSON.stringify(completed))
     }
     function isTranslationComplete(bookId) { return !!getCompletedBooks()[bookId] }
+    
+    // Store/retrieve total paragraph count per book
+    const PARAGRAPH_COUNT_KEY = 'paragraph-counts'
+    function getParagraphCounts() { try { return JSON.parse(localStorage.getItem(PARAGRAPH_COUNT_KEY) || '{}') } catch { return {} } }
+    function saveParagraphCount(bookId, total) {
+      const counts = getParagraphCounts()
+      counts[bookId] = total
+      localStorage.setItem(PARAGRAPH_COUNT_KEY, JSON.stringify(counts))
+    }
+    function getBookParagraphCount(bookId) { return getParagraphCounts()[bookId] || null }
 
     // ========== ZIP Loader ==========
     async function makeZipLoader(file) {
@@ -272,6 +282,7 @@
             } catch {}
           }
           updateQueuedTask(bookId, { status: 'translating', paragraphs: allParagraphs, totalCount: allParagraphs.length, startedAt: Date.now() })
+          saveParagraphCount(bookId, allParagraphs.length)
         }
         const remaining = allParagraphs.filter(p => !existingSet.has(p.hash))
         if (remaining.length === 0) {
@@ -427,10 +438,25 @@
       if (e.dataTransfer.files[0]?.name.toLowerCase().endsWith('.epub')) handleFile(e.dataTransfer.files[0])
     })
 
+    async function extractCoverAndMeta(file) {
+      try {
+        const [{ EPUB }, loader] = await Promise.all([import(FOLIATE_CDN + 'epub.js'), makeZipLoader(file)])
+        const book = await new EPUB(loader).init()
+        const meta = book.metadata || {}
+        const cover = await book.getCover?.() || null
+        const title = meta.title || file.name.replace(/\.epub$/i, '')
+        const author = Array.isArray(meta.author) ? meta.author.map(a => typeof a === 'string' ? a : (a.name || String(a))).join(', ') : (meta.author?.name || meta.author || '')
+        return { title, author, coverBlob: cover }
+      } catch (e) { console.error('Cover extraction failed:', e); return null }
+    }
+
     async function handleFile(file) {
       if (!file.name.toLowerCase().endsWith('.epub')) { alert('请选择 EPUB 文件'); return }
       const bookId = crypto.randomUUID()
       const book = { id: bookId, title: file.name.replace(/\.epub$/i, ''), author: '', coverBlob: null, file, addedAt: Date.now(), lastReadAt: null, progress: 0, lastLocation: null }
+      // Extract cover and metadata before saving
+      const meta = await extractCoverAndMeta(file)
+      if (meta) { book.title = meta.title; book.author = meta.author; book.coverBlob = meta.coverBlob }
       await saveBook(book); await renderBooks()
       if (isDropboxConfigured() && isLoggedIn()) {
         try {
@@ -490,15 +516,24 @@
         
         let badgeHTML = ''
         let translateInfoHTML = ''
+        const totalParas = getBookParagraphCount(book.id) || (queuedTask?.totalCount) || (completed?.count) || null
         if (activeState && activeState.status !== 'done') {
           const cls = activeState.status === 'error' ? 'error' : ''
           badgeHTML = `<div class="book-translate-badge ${cls}">${activeState.message}</div>`
-        } else if (completed) {
-          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
+        } else if (totalParas && translationCount >= totalParas) {
+          // Fully translated
+          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount}/${totalParas} 段 ✓</div>`
         } else if (queuedTask && queuedTask.status !== 'error') {
           badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续 ${queuedTask.progress || 0}%</div>`
+        } else if (translationCount > 0 && book.file) {
+          // Partially translated, can resume
+          const info = totalParas ? `${translationCount}/${totalParas}` : `${translationCount}`
+          translateInfoHTML = `<div class="book-translate-info">${info} 段</div>`
+          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续翻译</div>`
         } else if (translationCount > 0) {
-          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
+          // Has translations but no file (cloud sync), can't resume
+          const info = totalParas ? `${translationCount}/${totalParas}` : `${translationCount}`
+          translateInfoHTML = `<div class="book-translate-info">已翻译 ${info} 段</div>`
         } else if (book.file) {
           badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">翻译</div>`
         }
