@@ -85,6 +85,16 @@ export async function syncWithDropbox(progressCallback) {
     progressCallback?.('正在同步书籍文件...')
     await syncBookFiles(mergedData.books, progressCallback)
     
+    // 7. Sync translations for all books
+    progressCallback?.('正在同步翻译...')
+    for (const book of mergedData.books) {
+      try {
+        await syncBookTranslations(book.id)
+      } catch (e) {
+        console.warn('Translation sync failed for', book.id, e.message)
+      }
+    }
+    
     progressCallback?.('同步完成!')
     return { success: true }
     
@@ -307,8 +317,17 @@ export async function syncBookTranslations(bookId) {
       translation
     }))
     
-    // Upload merged translations
+    // Import to local IndexedDB (so new devices get translations)
     if (mergedArray.length > 0) {
+      const toImport = mergedArray.map(t => ({
+        bookId,
+        hash: t.hash,
+        translation: t.translation,
+        savedAt: Date.now()
+      }))
+      await importTranslations(toImport)
+      
+      // Upload merged translations back to Dropbox
       await uploadBookTranslations(bookId, mergedArray)
       console.log(`Synced ${mergedArray.length} translations for book ${bookId}`)
     }
