@@ -169,22 +169,13 @@
     
     console.log('📚 Imports completed')
     
-    // Debounced sync to avoid too many API calls
-    let syncTimeout = null
+    // Sync on every change (deduplicated — won't fire if already syncing)
+    let isSyncing = false
     function debouncedSync() {
-      if (!isDropboxConfigured() || !isLoggedIn()) return
-      if (syncTimeout) clearTimeout(syncTimeout)
-      syncTimeout = setTimeout(() => {
-        pushToDropbox().catch(e => console.error('Auto sync failed:', e))
-      }, 3000) // Sync 3 seconds after last change
+      if (!isDropboxConfigured() || !isLoggedIn() || isSyncing) return
+      isSyncing = true
+      pushToDropbox().catch(e => console.error('Sync failed:', e)).finally(() => { isSyncing = false })
     }
-    
-    // Periodic sync every 60 seconds (in case user stays on same page)
-    setInterval(() => {
-      if (isDropboxConfigured() && isLoggedIn()) {
-        pushToDropbox().catch(e => console.error('Periodic sync failed:', e))
-      }
-    }, 60000)
     
     // Theme toggle
     const themeBtn = document.getElementById('btn-theme')
