@@ -230,3 +230,14 @@
   - If `paragraphCount` unknown but translations exist and file available, runs `countParagraphs(file)` in background to determine completion.
   - Backfill: localStorage paragraph counts automatically migrated to IndexedDB on render.
 - **Key principle**: Any state that affects UI across devices must live in IndexedDB (synced), not localStorage (per-browser).
+
+#### Batch 13: Critical fix — stale saveBook in async callbacks (2026-02-15)
+- **Bug**: Batch 12 introduced `saveBook(book)` in async callbacks (cover extraction, paragraph counting). These callbacks captured `book` objects by closure from `renderBooks()`. When they resolved seconds later, `saveBook(book)` used `put()` which replaced the ENTIRE IndexedDB record — including `progress` and `lastLocation` — with stale data from when the book was first read.
+- **Timeline of the bug**:
+  1. `renderBooks()` reads book (progress=60%) → starts `extractCoverOnly()` async
+  2. User clicks book → reader.html → reads to 70% → saves to IndexedDB
+  3. `extractCoverOnly()` resolves → `saveBook(book)` writes back the T0 snapshot (progress=60%)
+  4. User returns → reader reads 60% → progress reverted!
+- **Fix**: All async callbacks now re-read the fresh record from IndexedDB via `getBook(bookId)` before saving, ensuring only the intended field (coverBlob, paragraphCount) is updated.
+- **Rule**: NEVER do `saveBook(entireObject)` for partial field updates. Always re-read the latest record first.
+- **Also added**: Diagnostic logging in reader.html to trace lastLocation at every key point.
