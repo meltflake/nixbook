@@ -496,8 +496,8 @@
           translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
         } else if (queuedTask && queuedTask.status !== 'error') {
           badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续 ${queuedTask.progress || 0}%</div>`
-        } else if (translationCount > 0 && book.file) {
-          badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">继续 (${translationCount})</div>`
+        } else if (translationCount > 0) {
+          translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
         } else if (book.file) {
           badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">翻译</div>`
         }

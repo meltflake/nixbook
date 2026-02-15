@@ -1019,7 +1019,7 @@
           // Dark mode: #586e75 (more muted than English #839496), Light mode: #93a1a1
           const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
           const zhColor = isDark ? '#586e75' : '#93a1a1'
-          zhP.style.cssText = `color: ${zhColor}; font-size: 0.85em; margin-top: -0.5em; margin-bottom: 1em; line-height: 1.6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif; font-weight: 400;`
+          zhP.style.cssText = `color: ${zhColor}; font-size: 0.85em; margin-top: 0.3em; margin-bottom: 1.2em; line-height: 1.6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', sans-serif; font-weight: 400;`
           p.parentNode.insertBefore(zhP, p.nextSibling)
           injected++
         }
