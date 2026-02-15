@@ -25,7 +25,9 @@
 - **Cloudflare Worker**: Translation proxy at `nixbook.wulujia.workers.dev`
 
 ### Data Storage
-- **IndexedDB** (`epub-reader` v4): books, vocabulary, highlights, translations
+- **IndexedDB** (`epub-reader` v4): books (metadata only), vocabulary, highlights, translations
+- **Cache API** (`nixbook-epub-files`): epub file blobs (large files, separate quota from IndexedDB)
+- Books store `coverDataURL` (small JPEG data URL string) instead of `coverBlob` (large Blob)
 - **localStorage keys**:
   - `epub-reader-theme`: light/dark/eink
   - `reader-font-size`: number (default 16)
@@ -400,3 +402,49 @@ The sync model now follows the **Last-Writer-Wins Element Set** pattern used in 
   - But **100% reliable** — never fails, never corrupts
 - **Still saves CFI**: `lastLocation` (CFI) is still saved on every `relocate` event for potential future use, but is no longer used for restoration
 - **Protection window retained**: The 3-second init protection still blocks progress regression during initial `relocate` events
+
+#### Batch 26: iPad Safari 兼容性修复 (v0.0.24 → v0.0.34)
+
+**问题**: iPad (Safari/Brave) 上多个功能异常——书籍不同步、返回按钮无响应、epub 文件丢失、封面消失。
+
+**逐步修复**:
+- **v0.0.24**: 添加版本号显示
+- **v0.0.25-27**: 添加可见同步调试日志（后移除）
+- **v0.0.26**: IndexedDB 事务内 `await` 导致 Safari 自动提交事务 → 改为先读后写，事务内不 await
+- **v0.0.27**: 同步上传/下载详细日志，发现云端数据为空
+- **v0.0.28**: `syncBookFiles` 在元数据 JSON 缺失时跳过下载 → 改为用 bookId 创建最小记录并下载
+- **v0.0.28**: OAuth PKCE code verifier 从 `sessionStorage` 改为 `localStorage`（iOS 跨页面重定向可能丢失 sessionStorage）
+- **v0.0.29**: 清理调试代码
+- **v0.0.30**: 返回按钮 `await saveBook()` 可能永远不 resolve → 改为 `Promise.race` + 2s 超时
+- **v0.0.31**: 工具栏 z-index 10 → 1000（iPad iframe 吞掉低 z-index 元素的触摸事件）
+- **v0.0.32**: iOS Safari 回收 IndexedDB 大 Blob 导致 epub 文件不可读 → 添加 Blob 有效性检查 + 自动从 Dropbox 重新下载
+- **v0.0.33**: 封面 Blob 同理 → 添加有效性检查 + 从 epub 重新提取
+- **v0.0.34**: 划线页删除按钮从 hover 显示改为始终可见（触屏无 hover）
+
+**关键教训**:
+1. Safari/WebKit 的 IndexedDB 事务在 `await` 时会自动提交（与 Chrome 行为不同）
+2. iOS Safari 会在内存压力下回收 IndexedDB 中的大 Blob，对象引用还在但不可读
+3. iOS 上 `sessionStorage` 可能在 OAuth 重定向过程中丢失
+4. 低 z-index 的 fixed 元素在 iframe 上层时，iPad 可能无法接收触摸事件
+
+#### v0.1.0: 存储架构重构 — Cache API + Data URL
+
+**动机**: iOS Safari 频繁回收 IndexedDB 中的大 Blob（epub 文件和封面图片），导致书籍无法打开、封面消失。根本原因是不该把大文件存在 IndexedDB 里。
+
+**变更**:
+| 数据 | 之前 | 之后 |
+|------|------|------|
+| epub 文件 | IndexedDB Blob (1-20MB) | Cache API (`nixbook-epub-files`) |
+| 封面 | IndexedDB Blob (100KB-1MB) | data URL 字符串 (~5KB JPEG 缩略图) |
+| 元数据 | IndexedDB | IndexedDB（不变） |
+| IndexedDB 占用 | 50MB+ | <1MB |
+
+**实现细节**:
+- `saveBook()` 自动分离：file → `cacheEpubFile()`，coverBlob → `blobToThumbnailDataURL()` → `coverDataURL` 字段
+- `getBook(id)` 自动组装：从 Cache API 加载 file，合并到 metadata
+- `getAllBooks()` 只返回元数据（快速渲染列表，不加载 epub 文件）
+- `deleteBook()` 同时清理 Cache API 条目
+- 新增 `db.js` 函数：`cacheEpubFile()`, `getCachedEpub()`, `deleteCachedEpub()`, `blobToThumbnailDataURL()`
+- `sync.js` 上传/下载书籍文件改用 `getCachedEpub()` 检查本地缓存
+
+**Files changed**: db.js, sync.js, index.html, reader.html
