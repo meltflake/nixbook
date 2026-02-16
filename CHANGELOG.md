@@ -148,7 +148,7 @@
 
 ## Changelog
 
-### 2026-07-26
+### 2026-02-15
 
 #### v0.1.1: Translation backend → OpenRouter + MiniMax M2.5
 - Switched translation model from `claude-3-5-haiku-20241022` (Anthropic direct) to `minimax/minimax-m2.5` via OpenRouter
