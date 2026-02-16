@@ -723,6 +723,9 @@
           translateInfoHTML = `<div class="book-translate-info">已翻译 ${translationCount} 段</div>`
         } else if (book.file) {
           badgeHTML = `<div class="book-translate-badge clickable" data-action="translate">翻译</div>`
+        } else {
+          // No local file and no translations — cloud-only book, need re-import to translate
+          translateInfoHTML = `<div class="book-translate-info" style="color:var(--text-muted);opacity:0.7">需导入 epub 翻译</div>`
         }
         
         card.innerHTML = `${coverHTML}${badgeHTML}<div class="book-info"><div class="book-title">${esc(book.title || 'Untitled')}</div>${book.author ? `<div class="book-author">${esc(formatAuthor(book.author))}</div>` : ''}${progressHTML}${translateInfoHTML}</div><button class="book-delete" title="删除">×</button>`
