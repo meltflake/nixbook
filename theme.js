@@ -1,5 +1,5 @@
 // Theme management
-const THEME_KEY = 'nixbook-theme'
+const THEME_KEY = 'epub-reader-theme'
 
 export function getTheme() {
   return localStorage.getItem(THEME_KEY) || 'light'

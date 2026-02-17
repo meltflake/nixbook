@@ -202,7 +202,7 @@ function mergeData(local, remote) {
 // Apply merged data to local IndexedDB
 async function applyMergedData(data) {
   const db = await new Promise((resolve, reject) => {
-    const req = indexedDB.open('nixbook', 4)
+    const req = indexedDB.open('epub-reader', 4)
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
   })
