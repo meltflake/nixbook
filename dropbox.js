@@ -2,7 +2,7 @@
 // API Key 配置
 const DROPBOX_APP_KEY = 'c48i0tkl0702fno'
 
-const DROPBOX_DATA_PATH = '/epub-reader-data.json'
+const DROPBOX_DATA_PATH = '/nixbook-data.json'
 const TOKEN_KEY = 'dropbox-access-token'
 const REFRESH_TOKEN_KEY = 'dropbox-refresh-token'
 const TOKEN_EXPIRES_KEY = 'dropbox-token-expires'

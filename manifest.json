@@ -1,6 +1,6 @@
 {
-  "name": "Luca's EPUB Reader",
-  "short_name": "EPUB Reader",
+  "name": "NixBook",
+  "short_name": "NixBook",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#fdf6e3",

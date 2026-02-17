@@ -1015,7 +1015,7 @@
       dictLoading = true
       try {
         // Try IndexedDB cache first
-        const DB_NAME = 'epub-reader'
+        const DB_NAME = 'nixbook'
         const db = await new Promise(r => { const req = indexedDB.open(DB_NAME, 4); req.onsuccess = () => r(req.result); req.onerror = () => r(null) })
         if (db) {
           // Check if dict is cached in localStorage (flag only, data in memory)

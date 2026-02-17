@@ -1,4 +1,4 @@
-const DB_NAME = 'epub-reader'
+const DB_NAME = 'nixbook'
 const DB_VERSION = 4  // Upgraded for translations store
 
 function openDB() {
